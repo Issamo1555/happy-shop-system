@@ -14,16 +14,353 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      appointments: {
+        Row: {
+          client_id: string | null
+          client_name: string
+          created_at: string
+          created_by: string | null
+          duration_min: number
+          id: string
+          notes: string | null
+          product_id: string | null
+          service_name: string
+          starts_at: string
+          status: Database["public"]["Enums"]["appointment_status"]
+        }
+        Insert: {
+          client_id?: string | null
+          client_name: string
+          created_at?: string
+          created_by?: string | null
+          duration_min?: number
+          id?: string
+          notes?: string | null
+          product_id?: string | null
+          service_name: string
+          starts_at: string
+          status?: Database["public"]["Enums"]["appointment_status"]
+        }
+        Update: {
+          client_id?: string | null
+          client_name?: string
+          created_at?: string
+          created_by?: string | null
+          duration_min?: number
+          id?: string
+          notes?: string | null
+          product_id?: string | null
+          service_name?: string
+          starts_at?: string
+          status?: Database["public"]["Enums"]["appointment_status"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "appointments_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "appointments_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      client_packs: {
+        Row: {
+          client_id: string
+          id: string
+          product_id: string
+          purchased_at: string
+          sessions_remaining: number
+          sessions_total: number
+        }
+        Insert: {
+          client_id: string
+          id?: string
+          product_id: string
+          purchased_at?: string
+          sessions_remaining: number
+          sessions_total: number
+        }
+        Update: {
+          client_id?: string
+          id?: string
+          product_id?: string
+          purchased_at?: string
+          sessions_remaining?: number
+          sessions_total?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_packs_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_packs_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      clients: {
+        Row: {
+          children_count: number
+          created_at: string
+          email: string | null
+          first_name: string
+          id: string
+          is_member: boolean
+          last_name: string | null
+          notes: string | null
+          phone: string | null
+          updated_at: string
+        }
+        Insert: {
+          children_count?: number
+          created_at?: string
+          email?: string | null
+          first_name: string
+          id?: string
+          is_member?: boolean
+          last_name?: string | null
+          notes?: string | null
+          phone?: string | null
+          updated_at?: string
+        }
+        Update: {
+          children_count?: number
+          created_at?: string
+          email?: string | null
+          first_name?: string
+          id?: string
+          is_member?: boolean
+          last_name?: string | null
+          notes?: string | null
+          phone?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      products: {
+        Row: {
+          active: boolean
+          bookable: boolean
+          category: Database["public"]["Enums"]["product_category"]
+          created_at: string
+          description: string | null
+          duration_min: number | null
+          id: string
+          name: string
+          pack_sessions: number | null
+          price: number
+          sort_order: number
+          type: Database["public"]["Enums"]["product_type"]
+        }
+        Insert: {
+          active?: boolean
+          bookable?: boolean
+          category: Database["public"]["Enums"]["product_category"]
+          created_at?: string
+          description?: string | null
+          duration_min?: number | null
+          id?: string
+          name: string
+          pack_sessions?: number | null
+          price: number
+          sort_order?: number
+          type?: Database["public"]["Enums"]["product_type"]
+        }
+        Update: {
+          active?: boolean
+          bookable?: boolean
+          category?: Database["public"]["Enums"]["product_category"]
+          created_at?: string
+          description?: string | null
+          duration_min?: number | null
+          id?: string
+          name?: string
+          pack_sessions?: number | null
+          price?: number
+          sort_order?: number
+          type?: Database["public"]["Enums"]["product_type"]
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          email: string | null
+          full_name: string | null
+          id: string
+        }
+        Insert: {
+          created_at?: string
+          email?: string | null
+          full_name?: string | null
+          id: string
+        }
+        Update: {
+          created_at?: string
+          email?: string | null
+          full_name?: string | null
+          id?: string
+        }
+        Relationships: []
+      }
+      sale_items: {
+        Row: {
+          id: string
+          line_total: number
+          product_id: string | null
+          product_name: string
+          quantity: number
+          sale_id: string
+          unit_price: number
+        }
+        Insert: {
+          id?: string
+          line_total: number
+          product_id?: string | null
+          product_name: string
+          quantity?: number
+          sale_id: string
+          unit_price: number
+        }
+        Update: {
+          id?: string
+          line_total?: number
+          product_id?: string | null
+          product_name?: string
+          quantity?: number
+          sale_id?: string
+          unit_price?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sale_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sale_items_sale_id_fkey"
+            columns: ["sale_id"]
+            isOneToOne: false
+            referencedRelation: "sales"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sales: {
+        Row: {
+          cashier_id: string
+          client_id: string | null
+          created_at: string
+          discount: number
+          discount_reason: string | null
+          id: string
+          note: string | null
+          payment_method: Database["public"]["Enums"]["payment_method"]
+          subtotal: number
+          total: number
+        }
+        Insert: {
+          cashier_id: string
+          client_id?: string | null
+          created_at?: string
+          discount?: number
+          discount_reason?: string | null
+          id?: string
+          note?: string | null
+          payment_method?: Database["public"]["Enums"]["payment_method"]
+          subtotal: number
+          total: number
+        }
+        Update: {
+          cashier_id?: string
+          client_id?: string | null
+          created_at?: string
+          discount?: number
+          discount_reason?: string | null
+          id?: string
+          note?: string | null
+          payment_method?: Database["public"]["Enums"]["payment_method"]
+          subtotal?: number
+          total?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sales_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "cashier"
+      appointment_status: "scheduled" | "completed" | "cancelled" | "no_show"
+      payment_method: "cash" | "card" | "transfer" | "pack"
+      product_category:
+        | "periscolaire"
+        | "laep"
+        | "pmi"
+        | "allaitement"
+        | "perinatal"
+        | "naissance"
+        | "soin"
+        | "accouchement"
+        | "atelier"
+        | "cafe"
+        | "food"
+      product_type: "unit" | "pack" | "session"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +487,24 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "cashier"],
+      appointment_status: ["scheduled", "completed", "cancelled", "no_show"],
+      payment_method: ["cash", "card", "transfer", "pack"],
+      product_category: [
+        "periscolaire",
+        "laep",
+        "pmi",
+        "allaitement",
+        "perinatal",
+        "naissance",
+        "soin",
+        "accouchement",
+        "atelier",
+        "cafe",
+        "food",
+      ],
+      product_type: ["unit", "pack", "session"],
+    },
   },
 } as const
