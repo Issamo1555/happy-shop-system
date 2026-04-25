@@ -1,11 +1,12 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
-import { Heart, ShoppingBag, Users, Calendar, Receipt, LogOut } from "lucide-react";
+import { Heart, ShoppingBag, Users, Calendar, Receipt, LogOut, Package } from "lucide-react";
 import { toast } from "sonner";
 
 const navItems = [
   { to: "/caisse", label: "Caisse", icon: ShoppingBag },
+  { to: "/catalogue", label: "Catalogue", icon: Package },
   { to: "/clients", label: "Clients", icon: Users },
   { to: "/agenda", label: "Agenda", icon: Calendar },
   { to: "/historique", label: "Historique", icon: Receipt },

@@ -30,7 +30,13 @@ function LoginPage() {
       await signIn(email, password);
       toast.success("Bienvenue");
     } catch (err: any) {
-      toast.error(err.message ?? "Connexion impossible");
+      if (err.message === "Email not confirmed") {
+        toast.error("Veuillez confirmer votre e-mail avant de vous connecter.");
+      } else if (err.message === "Invalid login credentials") {
+        toast.error("Identifiants incorrects.");
+      } else {
+        toast.error(err.message ?? "Connexion impossible");
+      }
     } finally {
       setSubmitting(false);
     }
