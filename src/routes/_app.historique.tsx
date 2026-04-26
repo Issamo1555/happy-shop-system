@@ -9,6 +9,7 @@ import { addDays, format, startOfDay } from "date-fns";
 import { fr } from "date-fns/locale";
 import { formatDhs } from "@/lib/format";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ZReportModal } from "@/components/ZReportModal";
 
 export const Route = createFileRoute("/_app/historique")({
   component: HistoryPage,
@@ -46,6 +47,7 @@ function HistoryPage() {
   const [search, setSearch] = useState("");
   const [opened, setOpened] = useState<Sale | null>(null);
   const [items, setItems] = useState<SaleItem[]>([]);
+  const [isZModalOpen, setIsZModalOpen] = useState(false);
 
   const load = async () => {
     const start = startOfDay(day).toISOString();
@@ -96,7 +98,12 @@ function HistoryPage() {
           <Button size="icon" variant="ghost" onClick={() => setDay((d) => addDays(d, 1))}><ChevronRight className="w-4 h-4" /></Button>
           <Button size="sm" variant="ghost" onClick={() => setDay(startOfDay(new Date()))}>Aujourd'hui</Button>
         </div>
-        <Input placeholder="Rechercher..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-56" />
+        <div className="flex items-center gap-2">
+          <Button variant="outline" className="gap-2" onClick={() => setIsZModalOpen(true)}>
+            <ReceiptIcon className="w-4 h-4" /> Rapport Z
+          </Button>
+          <Input placeholder="Rechercher..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-56" />
+        </div>
       </div>
 
       {/* SUMMARY */}
@@ -184,6 +191,14 @@ function HistoryPage() {
           )}
         </DialogContent>
       </Dialog>
+      
+      <ZReportModal 
+        open={isZModalOpen} 
+        onOpenChange={setIsZModalOpen}
+        day={day}
+        sales={sales}
+        totals={totals}
+      />
     </div>
   );
 }

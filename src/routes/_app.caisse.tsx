@@ -120,10 +120,7 @@ function CaissePage() {
     });
   }, [products, activeCat, search]);
 
-  const categoriesPresent = useMemo(
-    () => CATEGORY_ORDER.filter((c) => products.some((p) => p.category === c)),
-    [products]
-  );
+  const categoriesPresent = CATEGORY_ORDER;
 
   const validateSale = async () => {
     if (!user) return;
