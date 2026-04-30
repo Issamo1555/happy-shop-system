@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { getSalesAction, getSaleItemsAction } from "@/lib/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -50,22 +50,23 @@ function HistoryPage() {
   const [isZModalOpen, setIsZModalOpen] = useState(false);
 
   const load = async () => {
-    const start = startOfDay(day).toISOString();
-    const end = addDays(startOfDay(day), 1).toISOString();
-    const { data } = await supabase
-      .from("sales")
-      .select("*, clients(first_name,last_name)")
-      .gte("created_at", start)
-      .lt("created_at", end)
-      .order("created_at", { ascending: false });
-    setSales((data ?? []) as Sale[]);
+    const dayStr = format(day, "yyyy-MM-dd");
+    const data = await getSalesAction({ data: dayStr });
+    
+    // Map the flat result to the expected structure
+    const mappedSales = (data as any[]).map((r: any) => ({
+      ...r,
+      clients: r.first_name ? { first_name: r.first_name, last_name: r.last_name } : null
+    }));
+    
+    setSales(mappedSales as Sale[]);
   };
   useEffect(() => { load(); }, [day]);
 
   const openDetail = async (s: Sale) => {
     setOpened(s);
-    const { data } = await supabase.from("sale_items").select("*").eq("sale_id", s.id);
-    setItems((data ?? []) as SaleItem[]);
+    const data = await getSaleItemsAction({ data: s.id });
+    setItems(data as unknown as SaleItem[]);
   };
 
   const filtered = useMemo(() => {

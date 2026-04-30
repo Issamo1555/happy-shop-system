@@ -1,12 +1,10 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import type { Session, User } from "@supabase/supabase-js";
-import { supabase } from "@/integrations/supabase/client";
+import { loginAction } from "./actions";
 
 export type AppRole = "admin" | "cashier";
 
 interface AuthState {
-  session: Session | null;
-  user: User | null;
+  user: any | null;
   roles: AppRole[];
   loading: boolean;
   isAuthenticated: boolean;
@@ -20,66 +18,44 @@ interface AuthState {
 const AuthContext = createContext<AuthState | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<Session | null>(null);
-  const [user, setUser] = useState<User | null>(null);
-  const [roles, setRoles] = useState<AppRole[]>([]);
+  const [user, setUser] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchRoles = async (userId: string) => {
-    const { data } = await supabase.from("user_roles").select("role").eq("user_id", userId);
-    setRoles((data ?? []).map((r) => r.role as AppRole));
-  };
-
   useEffect(() => {
-    // Listener first
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, newSession) => {
-      setSession(newSession);
-      setUser(newSession?.user ?? null);
-      if (newSession?.user) {
-        // defer to avoid deadlock
-        setTimeout(() => fetchRoles(newSession.user.id), 0);
-      } else {
-        setRoles([]);
-      }
-    });
-    // Then load existing session
-    supabase.auth.getSession().then(({ data: { session: existing } }) => {
-      setSession(existing);
-      setUser(existing?.user ?? null);
-      if (existing?.user) fetchRoles(existing.user.id).finally(() => setLoading(false));
-      else setLoading(false);
-    });
-    return () => sub.subscription.unsubscribe();
+    const savedUser = localStorage.getItem("pos_user");
+    if (savedUser) {
+      setUser(JSON.parse(savedUser));
+    }
+    setLoading(false);
   }, []);
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) throw error;
+    try {
+      const userData = await loginAction({ data: { email, password } });
+      setUser(userData);
+      localStorage.setItem("pos_user", JSON.stringify(userData));
+    } catch (err: any) {
+      throw new Error(err.message || "Erreur de connexion");
+    }
   };
 
   const signUp = async (email: string, password: string, fullName: string) => {
-    const redirectUrl = `${window.location.origin}/`;
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: redirectUrl,
-        data: { full_name: fullName },
-      },
-    });
-    if (error) throw error;
+    // For now, only admin can create users or we can implement a local signup
+    throw new Error("L'inscription locale n'est pas encore activée. Utilisez l'accès admin par défaut.");
   };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    setUser(null);
+    localStorage.removeItem("pos_user");
   };
 
+  const roles = user ? [user.role as AppRole] : [];
+
   const value: AuthState = {
-    session,
     user,
     roles,
     loading,
-    isAuthenticated: !!session,
+    isAuthenticated: !!user,
     isAdmin: roles.includes("admin"),
     isStaff: roles.includes("admin") || roles.includes("cashier"),
     signIn,

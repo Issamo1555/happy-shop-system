@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState, type FormEvent } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { getClientsAction, createClientAction, updateClientAction, getClientPacksAction, consumePackSessionAction } from "@/lib/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -44,18 +44,14 @@ function ClientsPage() {
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
 
   const load = async () => {
-    const { data } = await supabase.from("clients").select("*").order("last_name");
+    const data = await getClientsAction();
     setClients((data ?? []) as Client[]);
   };
   useEffect(() => { load(); }, []);
 
   const openClient = async (c: Client) => {
     setSelectedClient(c);
-    const { data } = await supabase
-      .from("client_packs")
-      .select("id,product_id,sessions_total,sessions_remaining,purchased_at,products(name)")
-      .eq("client_id", c.id)
-      .order("purchased_at", { ascending: false });
+    const data = await getClientPacksAction({ data: c.id });
     setPacks((data ?? []) as any);
   };
 
@@ -69,10 +65,7 @@ function ClientsPage() {
 
   const consumeSession = async (pack: Pack) => {
     if (pack.sessions_remaining <= 0) return;
-    await supabase
-      .from("client_packs")
-      .update({ sessions_remaining: pack.sessions_remaining - 1 })
-      .eq("id", pack.id);
+    await consumePackSessionAction({ data: pack.id });
     if (selectedClient) openClient(selectedClient);
     toast.success("Séance décomptée");
   };
@@ -202,11 +195,17 @@ function ClientDialog({ client, onSaved }: { client: Client | null; onSaved: () 
       children_count: children,
       notes: notes || null,
     };
-    const res = client
-      ? await supabase.from("clients").update(payload).eq("id", client.id)
-      : await supabase.from("clients").insert(payload);
-    if (res.error) toast.error(res.error.message);
-    else { toast.success("Client enregistré"); onSaved(); }
+    try {
+      if (client) {
+        await updateClientAction({ data: { id: client.id, ...payload } });
+      } else {
+        await createClientAction({ data: { id: crypto.randomUUID(), ...payload } });
+      }
+      toast.success("Client enregistré");
+      onSaved();
+    } catch (err) {
+      toast.error("Erreur lors de l'enregistrement");
+    }
   };
 
   return (

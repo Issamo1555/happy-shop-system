@@ -13,6 +13,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppHistoriqueRouteImport } from './routes/_app.historique'
+import { Route as AppDbAdminRouteImport } from './routes/_app.db-admin'
 import { Route as AppClientsRouteImport } from './routes/_app.clients'
 import { Route as AppCatalogueRouteImport } from './routes/_app.catalogue'
 import { Route as AppCaisseRouteImport } from './routes/_app.caisse'
@@ -35,6 +36,11 @@ const IndexRoute = IndexRouteImport.update({
 const AppHistoriqueRoute = AppHistoriqueRouteImport.update({
   id: '/historique',
   path: '/historique',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppDbAdminRoute = AppDbAdminRouteImport.update({
+  id: '/db-admin',
+  path: '/db-admin',
   getParentRoute: () => AppRoute,
 } as any)
 const AppClientsRoute = AppClientsRouteImport.update({
@@ -65,6 +71,7 @@ export interface FileRoutesByFullPath {
   '/caisse': typeof AppCaisseRoute
   '/catalogue': typeof AppCatalogueRoute
   '/clients': typeof AppClientsRoute
+  '/db-admin': typeof AppDbAdminRoute
   '/historique': typeof AppHistoriqueRoute
 }
 export interface FileRoutesByTo {
@@ -74,6 +81,7 @@ export interface FileRoutesByTo {
   '/caisse': typeof AppCaisseRoute
   '/catalogue': typeof AppCatalogueRoute
   '/clients': typeof AppClientsRoute
+  '/db-admin': typeof AppDbAdminRoute
   '/historique': typeof AppHistoriqueRoute
 }
 export interface FileRoutesById {
@@ -85,6 +93,7 @@ export interface FileRoutesById {
   '/_app/caisse': typeof AppCaisseRoute
   '/_app/catalogue': typeof AppCatalogueRoute
   '/_app/clients': typeof AppClientsRoute
+  '/_app/db-admin': typeof AppDbAdminRoute
   '/_app/historique': typeof AppHistoriqueRoute
 }
 export interface FileRouteTypes {
@@ -96,6 +105,7 @@ export interface FileRouteTypes {
     | '/caisse'
     | '/catalogue'
     | '/clients'
+    | '/db-admin'
     | '/historique'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -105,6 +115,7 @@ export interface FileRouteTypes {
     | '/caisse'
     | '/catalogue'
     | '/clients'
+    | '/db-admin'
     | '/historique'
   id:
     | '__root__'
@@ -115,6 +126,7 @@ export interface FileRouteTypes {
     | '/_app/caisse'
     | '/_app/catalogue'
     | '/_app/clients'
+    | '/_app/db-admin'
     | '/_app/historique'
   fileRoutesById: FileRoutesById
 }
@@ -154,6 +166,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppHistoriqueRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/db-admin': {
+      id: '/_app/db-admin'
+      path: '/db-admin'
+      fullPath: '/db-admin'
+      preLoaderRoute: typeof AppDbAdminRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/clients': {
       id: '/_app/clients'
       path: '/clients'
@@ -190,6 +209,7 @@ interface AppRouteChildren {
   AppCaisseRoute: typeof AppCaisseRoute
   AppCatalogueRoute: typeof AppCatalogueRoute
   AppClientsRoute: typeof AppClientsRoute
+  AppDbAdminRoute: typeof AppDbAdminRoute
   AppHistoriqueRoute: typeof AppHistoriqueRoute
 }
 
@@ -198,6 +218,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppCaisseRoute: AppCaisseRoute,
   AppCatalogueRoute: AppCatalogueRoute,
   AppClientsRoute: AppClientsRoute,
+  AppDbAdminRoute: AppDbAdminRoute,
   AppHistoriqueRoute: AppHistoriqueRoute,
 }
 

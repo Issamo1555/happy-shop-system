@@ -13,10 +13,12 @@ export const CATEGORY_LABELS: Record<string, string> = {
   accouchement: "Accouchement",
   atelier: "Ateliers",
   cafe: "Café & Boissons",
-  food: "Food healthy",
+  food: "Food Healthy",
 };
 
 export const CATEGORY_ORDER = [
+  "cafe",
+  "food",
   "periscolaire",
   "laep",
   "pmi",
@@ -26,6 +28,4 @@ export const CATEGORY_ORDER = [
   "soin",
   "accouchement",
   "atelier",
-  "cafe",
-  "food",
 ];

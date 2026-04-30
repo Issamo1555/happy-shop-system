@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { getProductsAction, createProductAction, updateProductAction, toggleProductActiveAction } from "@/lib/actions";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -66,16 +66,11 @@ function CataloguePage() {
 
   const fetchProducts = async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from("products")
-      .select("*")
-      .order("category", { ascending: true })
-      .order("sort_order", { ascending: true });
-    
-    if (error) {
-      toast.error("Erreur lors du chargement des produits");
-    } else {
+    try {
+      const data = await getProductsAction();
       setProducts(data as Product[]);
+    } catch (err) {
+      toast.error("Erreur lors du chargement des produits");
     }
     setLoading(false);
   };
@@ -85,30 +80,22 @@ function CataloguePage() {
   }, []);
 
   const handleUpdate = async (id: string) => {
-    const { error } = await supabase
-      .from("products")
-      .update(editForm)
-      .eq("id", id);
-
-    if (error) {
-      toast.error("Erreur lors de la mise à jour");
-    } else {
+    try {
+      await updateProductAction({ data: { id, ...editForm } });
       toast.success("Produit mis à jour");
       setEditingId(null);
       fetchProducts();
+    } catch (err) {
+      toast.error("Erreur lors de la mise à jour");
     }
   };
 
   const handleToggleActive = async (id: string, active: boolean) => {
-    const { error } = await supabase
-      .from("products")
-      .update({ active })
-      .eq("id", id);
-
-    if (error) {
-      toast.error("Erreur lors du changement d'état");
-    } else {
+    try {
+      await toggleProductActiveAction({ data: { id, active } });
       fetchProducts();
+    } catch (err) {
+      toast.error("Erreur lors du changement d'état");
     }
   };
 
@@ -118,11 +105,8 @@ function CataloguePage() {
       return;
     }
 
-    const { error } = await supabase.from("products").insert([newProduct]);
-
-    if (error) {
-      toast.error("Erreur lors de l'ajout");
-    } else {
+    try {
+      await createProductAction({ data: { ...newProduct, id: crypto.randomUUID() } });
       toast.success("Produit ajouté");
       setIsAddOpen(false);
       setNewProduct({
@@ -134,6 +118,8 @@ function CataloguePage() {
         sort_order: 0,
       });
       fetchProducts();
+    } catch (err) {
+      toast.error("Erreur lors de l'ajout");
     }
   };
 

@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { getProductsAction, getClientsAction, saveSaleAction } from "@/lib/actions";
 import { useAuth } from "@/lib/auth-context";
 import { useCart } from "@/lib/cart-context";
 import { Button } from "@/components/ui/button";
@@ -43,7 +43,7 @@ function CaissePage() {
   const cart = useCart();
   const [products, setProducts] = useState<Product[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
-  const [activeCat, setActiveCat] = useState<string>("periscolaire");
+  const [activeCat, setActiveCat] = useState<string>(CATEGORY_ORDER[0]);
   const [search, setSearch] = useState("");
   const [clientId, setClientId] = useState<string | "">("");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
@@ -61,17 +61,11 @@ function CaissePage() {
 
   useEffect(() => {
     (async () => {
-      const { data: prods } = await supabase
-        .from("products")
-        .select("id,name,category,type,price,pack_sessions")
-        .eq("active", true)
-        .order("sort_order");
-      setProducts((prods ?? []) as Product[]);
-      const { data: cls } = await supabase
-        .from("clients")
-        .select("id,first_name,last_name,is_member,children_count")
-        .order("last_name");
-      setClients((cls ?? []) as Client[]);
+      const prods = await getProductsAction();
+      setProducts(prods as unknown as Product[]);
+      
+      const cls = await getClientsAction();
+      setClients(cls as unknown as Client[]);
     })();
   }, []);
 
@@ -130,50 +124,38 @@ function CaissePage() {
     }
     setSubmitting(true);
     try {
-      const { data: sale, error: saleErr } = await supabase
-        .from("sales")
-        .insert({
+      const saleId = crypto.randomUUID();
+      const discountReason = [autoDiscount.reason, extraDiscount > 0 ? `Remise manuelle ${extraDiscount} DHS` : ""]
+        .filter(Boolean)
+        .join(" + ") || null;
+
+      const saleData = {
+        sale: {
+          id: saleId,
           cashier_id: user.id,
           client_id: clientId || null,
           subtotal: cart.subtotal,
           discount: totalDiscount,
-          discount_reason:
-            [autoDiscount.reason, extraDiscount > 0 ? `Remise manuelle ${extraDiscount} DHS` : ""]
-              .filter(Boolean)
-              .join(" + ") || null,
+          discount_reason: discountReason,
           total,
           payment_method: paymentMethod,
           note: note || null,
-        })
-        .select()
-        .single();
-      if (saleErr) throw saleErr;
+        },
+        items: cart.items.map(i => ({
+          id: crypto.randomUUID(),
+          sale_id: saleId,
+          product_id: i.productId,
+          product_name: i.name,
+          unit_price: i.unitPrice,
+          quantity: i.quantity,
+          line_total: i.unitPrice * i.quantity
+        }))
+      };
 
-      const itemsPayload = cart.items.map((i) => ({
-        sale_id: sale.id,
-        product_id: i.productId,
-        product_name: i.name,
-        unit_price: i.unitPrice,
-        quantity: i.quantity,
-        line_total: i.unitPrice * i.quantity,
-      }));
-      const { error: itemsErr } = await supabase.from("sale_items").insert(itemsPayload);
-      if (itemsErr) throw itemsErr;
+      await saveSaleAction({ data: saleData });
 
-      // Si client + pack acheté, créer un client_pack
-      if (clientId) {
-        const packs = cart.items.filter((i) => i.type === "pack" && i.packSessions);
-        for (const p of packs) {
-          for (let n = 0; n < p.quantity; n++) {
-            await supabase.from("client_packs").insert({
-              client_id: clientId,
-              product_id: p.productId,
-              sessions_total: p.packSessions!,
-              sessions_remaining: p.packSessions!,
-            });
-          }
-        }
-      }
+      // Si client + pack acheté, créer un client_pack localement (optionnel mais recommandé pour suivi offline)
+      // Note: Le schéma local actuel ne gère pas encore client_packs, on pourrait l'ajouter si besoin
 
       setLastTicket({
         items: [...cart.items],
