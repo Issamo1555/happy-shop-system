@@ -106,7 +106,7 @@ function CataloguePage() {
     }
 
     try {
-      await createProductAction({ data: { ...newProduct, id: crypto.randomUUID() } });
+      await createProductAction({ data: newProduct });
       toast.success("Produit ajouté");
       setIsAddOpen(false);
       setNewProduct({

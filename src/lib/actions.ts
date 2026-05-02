@@ -12,12 +12,13 @@ export const getProductsAction = createServerFn({ method: "GET" })
 
 export const createProductAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: any }) => {
+    const id = data.id || crypto.randomUUID();
     const stmt = db.prepare(`
       INSERT INTO products (id, name, category, type, price, active, sort_order)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
-    stmt.run(data.id, data.name, data.category, data.type, data.price, data.active ? 1 : 0, data.sort_order);
-    return { success: true };
+    stmt.run(id, data.name, data.category, data.type, data.price, data.active ? 1 : 0, data.sort_order);
+    return { success: true, id };
   });
 
 export const updateProductAction = createServerFn({ method: "POST" })
