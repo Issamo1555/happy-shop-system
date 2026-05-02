@@ -213,9 +213,9 @@ export const signUpAction = createServerFn({ method: "POST" })
     const { email, password, fullName } = data;
     const id = crypto.randomUUID();
     
-    // Si c'est le premier utilisateur, on le met admin, sinon caissier
-    const userCount = (db.prepare("SELECT COUNT(*) as count FROM users").get() as any).count;
-    const role = userCount === 0 ? "admin" : "cashier";
+    // Toutes les nouvelles inscriptions sont forcées en rôle 'cashier'
+    // L'unique admin est admin@mums.home (créé à l'initialisation)
+    const role = "cashier";
 
     db.prepare(`
       INSERT INTO users (id, email, password, full_name, role)
