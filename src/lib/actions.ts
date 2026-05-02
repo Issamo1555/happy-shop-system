@@ -48,6 +48,13 @@ export const toggleProductActiveAction = createServerFn({ method: "POST" })
     return { success: true };
   });
 
+export const deleteProductAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: { id: string, adminId: string } }) => {
+    checkAdmin(data.adminId);
+    db.prepare("DELETE FROM products WHERE id = ?").run(data.id);
+    return { success: true };
+  });
+
 // CLIENTS
 export const getClientsAction = createServerFn({ method: "GET" })
   .handler(async () => {

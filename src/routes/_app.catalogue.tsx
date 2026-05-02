@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { getProductsAction, createProductAction, updateProductAction, toggleProductActiveAction } from "@/lib/actions";
+import { getProductsAction, createProductAction, updateProductAction, toggleProductActiveAction, deleteProductAction } from "@/lib/actions";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,7 +30,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { CATEGORY_LABELS, formatDhs } from "@/lib/format";
-import { Plus, Pencil, Save, X, Package } from "lucide-react";
+import { Plus, Pencil, Save, X, Package, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_app/catalogue")({
@@ -96,6 +96,17 @@ function CataloguePage() {
       fetchProducts();
     } catch (err) {
       toast.error("Erreur lors du changement d'état");
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!window.confirm("Voulez-vous vraiment supprimer ce produit ? Cette action est irréversible.")) return;
+    try {
+      await deleteProductAction({ data: { id, adminId: user?.id } });
+      toast.success("Produit supprimé");
+      fetchProducts();
+    } catch (err: any) {
+      toast.error(err.message || "Erreur lors de la suppression");
     }
   };
 
@@ -323,14 +334,24 @@ function CataloguePage() {
                         </Button>
                       </div>
                     ) : (
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-8 w-8"
-                        onClick={() => startEditing(product)}
-                      >
-                        <Pencil className="w-4 h-4" />
-                      </Button>
+                      <div className="flex justify-end gap-1">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-8 w-8 text-destructive"
+                          onClick={() => handleDelete(product.id)}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-8 w-8"
+                          onClick={() => startEditing(product)}
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </Button>
+                      </div>
                     )}
                   </TableCell>
                 </TableRow>
