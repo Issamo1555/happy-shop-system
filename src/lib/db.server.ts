@@ -21,6 +21,7 @@ export const initServerDb = () => {
       duration_min INTEGER,
       bookable BOOLEAN NOT NULL DEFAULT 0,
       active BOOLEAN NOT NULL DEFAULT 1,
+      deleted INTEGER DEFAULT 0,
       sort_order INTEGER NOT NULL DEFAULT 0,
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
@@ -34,6 +35,7 @@ export const initServerDb = () => {
       is_member BOOLEAN NOT NULL DEFAULT 0,
       children_count INTEGER NOT NULL DEFAULT 0,
       notes TEXT,
+      deleted INTEGER DEFAULT 0,
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
     );

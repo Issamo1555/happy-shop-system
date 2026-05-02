@@ -14,7 +14,7 @@ const checkAdmin = (userId: string | undefined) => {
 // PRODUCTS
 export const getProductsAction = createServerFn({ method: "GET" })
   .handler(async () => {
-    return db.prepare("SELECT * FROM products ORDER BY category ASC, sort_order ASC").all();
+    return db.prepare("SELECT * FROM products WHERE deleted = 0 ORDER BY category ASC, sort_order ASC").all();
   });
 
 export const createProductAction = createServerFn({ method: "POST" })
@@ -51,14 +51,15 @@ export const toggleProductActiveAction = createServerFn({ method: "POST" })
 export const deleteProductAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: { id: string, adminId: string } }) => {
     checkAdmin(data.adminId);
-    db.prepare("DELETE FROM products WHERE id = ?").run(data.id);
+    // Soft Delete instead of hard delete
+    db.prepare("UPDATE products SET deleted = 1 WHERE id = ?").run(data.id);
     return { success: true };
   });
 
 // CLIENTS
 export const getClientsAction = createServerFn({ method: "GET" })
   .handler(async () => {
-    return db.prepare("SELECT * FROM clients ORDER BY last_name ASC").all();
+    return db.prepare("SELECT * FROM clients WHERE deleted = 0 ORDER BY last_name ASC").all();
   });
 
 export const createClientAction = createServerFn({ method: "POST" })
@@ -80,6 +81,14 @@ export const updateClientAction = createServerFn({ method: "POST" })
       SET first_name = ?, last_name = ?, phone = ?, email = ?, is_member = ?, children_count = ?, notes = ?
       WHERE id = ?
     `).run(first_name, last_name, phone, email, is_member ? 1 : 0, children_count, notes, id);
+    return { success: true };
+  });
+
+export const deleteClientAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: { id: string, adminId: string } }) => {
+    checkAdmin(data.adminId);
+    // Soft Delete for clients too
+    db.prepare("UPDATE clients SET deleted = 1 WHERE id = ?").run(data.id);
     return { success: true };
   });
 
@@ -192,7 +201,6 @@ export const getTableDataAction = createServerFn({ method: "POST" })
 
 export const importFromSupabaseAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: { products: any[], clients: any[] } }) => {
-    // Note: This one is called during setup, we could also protect it
     const transaction = db.transaction(() => {
       if (data.products.length > 0) {
         const stmt = db.prepare(`

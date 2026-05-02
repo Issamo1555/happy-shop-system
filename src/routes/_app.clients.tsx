@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState, type FormEvent } from "react";
-import { getClientsAction, createClientAction, updateClientAction, getClientPacksAction, consumePackSessionAction } from "@/lib/actions";
+import { getClientsAction, createClientAction, updateClientAction, deleteClientAction, getClientPacksAction, consumePackSessionAction } from "@/lib/actions";
+import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, Phone, Mail, Star } from "lucide-react";
+import { Plus, Search, Phone, Mail, Star, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_app/clients")({
@@ -36,6 +37,7 @@ interface Pack {
 }
 
 function ClientsPage() {
+  const { user, isAdmin } = useAuth();
   const [clients, setClients] = useState<Client[]>([]);
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState(false);
@@ -68,6 +70,18 @@ function ClientsPage() {
     await consumePackSessionAction({ data: pack.id });
     if (selectedClient) openClient(selectedClient);
     toast.success("Séance décomptée");
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!window.confirm("Voulez-vous vraiment supprimer ce client ?")) return;
+    try {
+      await deleteClientAction({ data: { id, adminId: user?.id } });
+      toast.success("Client supprimé");
+      setSelectedClient(null);
+      load();
+    } catch (err: any) {
+      toast.error(err.message || "Erreur lors de la suppression");
+    }
   };
 
   return (
@@ -162,10 +176,18 @@ function ClientsPage() {
                   )}
                 </div>
               </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => { setEditing(selectedClient); setSelectedClient(null); setOpen(true); }}>
-                  Modifier
-                </Button>
+              <DialogFooter className="flex justify-between items-center w-full">
+                {isAdmin && (
+                  <Button variant="ghost" className="text-destructive gap-2" onClick={() => handleDelete(selectedClient.id)}>
+                    <Trash2 className="w-4 h-4" /> Supprimer le client
+                  </Button>
+                )}
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => { setEditing(selectedClient); setSelectedClient(null); setOpen(true); }}>
+                    Modifier
+                  </Button>
+                  <Button onClick={() => setSelectedClient(null)}>Fermer</Button>
+                </div>
               </DialogFooter>
             </>
           )}
