@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { loginAction } from "./actions";
+import { loginAction, signUpAction } from "./actions";
 
 export type AppRole = "admin" | "cashier";
 
@@ -40,8 +40,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signUp = async (email: string, password: string, fullName: string) => {
-    // For now, only admin can create users or we can implement a local signup
-    throw new Error("L'inscription locale n'est pas encore activée. Utilisez l'accès admin par défaut.");
+    try {
+      await signUpAction({ data: { email, password, fullName } });
+    } catch (err: any) {
+      throw new Error(err.message || "Erreur lors de l'inscription");
+    }
   };
 
   const signOut = async () => {

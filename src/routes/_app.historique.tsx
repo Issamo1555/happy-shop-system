@@ -4,12 +4,13 @@ import { getSalesAction, getSaleItemsAction } from "@/lib/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { ChevronLeft, ChevronRight, Receipt as ReceiptIcon, TrendingUp } from "lucide-react";
+import { ChevronLeft, ChevronRight, Receipt as ReceiptIcon, FileDown } from "lucide-react";
 import { addDays, format, startOfDay } from "date-fns";
 import { fr } from "date-fns/locale";
 import { formatDhs } from "@/lib/format";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ZReportModal } from "@/components/ZReportModal";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/_app/historique")({
   component: HistoryPage,
@@ -52,13 +53,10 @@ function HistoryPage() {
   const load = async () => {
     const dayStr = format(day, "yyyy-MM-dd");
     const data = await getSalesAction({ data: dayStr });
-    
-    // Map the flat result to the expected structure
     const mappedSales = (data as any[]).map((r: any) => ({
       ...r,
       clients: r.first_name ? { first_name: r.first_name, last_name: r.last_name } : null
     }));
-    
     setSales(mappedSales as Sale[]);
   };
   useEffect(() => { load(); }, [day]);
@@ -67,6 +65,34 @@ function HistoryPage() {
     setOpened(s);
     const data = await getSaleItemsAction({ data: s.id });
     setItems(data as unknown as SaleItem[]);
+  };
+
+  const handleExport = () => {
+    if (sales.length === 0) return;
+    const headers = ["ID", "Heure", "Client", "Sous-total", "Remise", "Total", "Paiement", "Note"];
+    const csvRows = [
+      headers.join(','),
+      ...sales.map(s => {
+        const row = [
+          s.id.slice(0, 8),
+          format(new Date(s.created_at), "HH:mm"),
+          s.clients ? `${s.clients.first_name} ${s.clients.last_name ?? ""}` : 'Anonyme',
+          s.subtotal,
+          s.discount,
+          s.total,
+          PAY_LABELS[s.payment_method],
+          s.note || ""
+        ];
+        return row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',');
+      })
+    ];
+    const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `ventes_${format(day, "yyyy-MM-dd")}.csv`);
+    link.click();
+    toast.success("Historique exporté");
   };
 
   const filtered = useMemo(() => {
@@ -91,6 +117,17 @@ function HistoryPage() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="font-display text-3xl text-primary flex-1">Historique des ventes</h1>
+        
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" className="gap-2" onClick={handleExport} disabled={sales.length === 0}>
+            <FileDown className="w-4 h-4" />
+            Export CSV
+          </Button>
+          <Button variant="outline" size="sm" className="gap-2" onClick={() => setIsZModalOpen(true)}>
+            <ReceiptIcon className="w-4 h-4" /> Rapport Z
+          </Button>
+        </div>
+
         <div className="flex items-center gap-1 pos-card p-1">
           <Button size="icon" variant="ghost" onClick={() => setDay((d) => addDays(d, -1))}><ChevronLeft className="w-4 h-4" /></Button>
           <span className="px-3 text-sm font-medium min-w-[180px] text-center">
@@ -99,15 +136,9 @@ function HistoryPage() {
           <Button size="icon" variant="ghost" onClick={() => setDay((d) => addDays(d, 1))}><ChevronRight className="w-4 h-4" /></Button>
           <Button size="sm" variant="ghost" onClick={() => setDay(startOfDay(new Date()))}>Aujourd'hui</Button>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" className="gap-2" onClick={() => setIsZModalOpen(true)}>
-            <ReceiptIcon className="w-4 h-4" /> Rapport Z
-          </Button>
-          <Input placeholder="Rechercher..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-56" />
-        </div>
+        <Input placeholder="Rechercher..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-56" />
       </div>
 
-      {/* SUMMARY */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div className="pos-card p-4">
           <p className="text-xs uppercase tracking-wider text-muted-foreground">CA du jour</p>
@@ -125,7 +156,6 @@ function HistoryPage() {
         ))}
       </div>
 
-      {/* LIST */}
       <div className="pos-card divide-y divide-border">
         {filtered.length === 0 ? (
           <div className="p-12 text-center text-muted-foreground">

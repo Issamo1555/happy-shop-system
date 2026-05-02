@@ -207,3 +207,20 @@ export const loginAction = createServerFn({ method: "POST" })
     }
     return user;
   });
+
+export const signUpAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: any }) => {
+    const { email, password, fullName } = data;
+    const id = crypto.randomUUID();
+    
+    // Si c'est le premier utilisateur, on le met admin, sinon caissier
+    const userCount = (db.prepare("SELECT COUNT(*) as count FROM users").get() as any).count;
+    const role = userCount === 0 ? "admin" : "cashier";
+
+    db.prepare(`
+      INSERT INTO users (id, email, password, full_name, role)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(id, email, password, fullName, role);
+    
+    return { id, email, fullName, role };
+  });
