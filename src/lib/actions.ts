@@ -45,12 +45,13 @@ export const getClientsAction = createServerFn({ method: "GET" })
 
 export const createClientAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: any }) => {
+    const id = crypto.randomUUID();
     const stmt = db.prepare(`
       INSERT INTO clients (id, first_name, last_name, phone, email, is_member, children_count, notes)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    stmt.run(data.id, data.first_name, data.last_name, data.phone, data.email, data.is_member ? 1 : 0, data.children_count, data.notes);
-    return { success: true };
+    stmt.run(id, data.first_name, data.last_name, data.phone, data.email, data.is_member ? 1 : 0, data.children_count, data.notes);
+    return { success: true, id };
   });
 
 export const updateClientAction = createServerFn({ method: "POST" })

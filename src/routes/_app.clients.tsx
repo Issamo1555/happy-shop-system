@@ -199,7 +199,7 @@ function ClientDialog({ client, onSaved }: { client: Client | null; onSaved: () 
       if (client) {
         await updateClientAction({ data: { id: client.id, ...payload } });
       } else {
-        await createClientAction({ data: { id: crypto.randomUUID(), ...payload } });
+        await createClientAction({ data: payload });
       }
       toast.success("Client enregistré");
       onSaved();
