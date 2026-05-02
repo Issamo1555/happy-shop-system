@@ -50,7 +50,8 @@ export function ZReportModal({ open, onOpenChange, day, sales, totals }: ZReport
 
         {/* PRINTABLE AREA */}
         <div className="space-y-6 py-4 font-mono text-sm print:m-0 print:p-0">
-          <div className="text-center space-y-1">
+          <div className="text-center space-y-2">
+            <img src="/logo_mums_home.png" alt="Mums'Home" className="h-16 mx-auto mb-2" />
             <h2 className="font-display text-xl font-bold uppercase">Mums'Home</h2>
             <p className="text-xs uppercase">Rapport de clôture journalière (Z)</p>
             <p className="text-xs border-y border-dashed border-black py-1 my-2">

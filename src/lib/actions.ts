@@ -4,6 +4,13 @@ import { readFileSync } from "fs";
 import { join } from "path";
 import { supabase } from "@/integrations/supabase/client";
 
+// SECURITY UTILITY
+const checkAdmin = (userId: string | undefined) => {
+  if (!userId) throw new Error("Non authentifié");
+  const user = db.prepare("SELECT role FROM users WHERE id = ?").get(userId) as any;
+  if (!user || user.role !== "admin") throw new Error("Accès refusé : Droits administrateur requis");
+};
+
 // PRODUCTS
 export const getProductsAction = createServerFn({ method: "GET" })
   .handler(async () => {
@@ -12,6 +19,7 @@ export const getProductsAction = createServerFn({ method: "GET" })
 
 export const createProductAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: any }) => {
+    checkAdmin(data.adminId);
     const id = data.id || crypto.randomUUID();
     const stmt = db.prepare(`
       INSERT INTO products (id, name, category, type, price, active, sort_order)
@@ -23,6 +31,7 @@ export const createProductAction = createServerFn({ method: "POST" })
 
 export const updateProductAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: any }) => {
+    checkAdmin(data.adminId);
     const { id, name, category, type, price, active, sort_order } = data;
     db.prepare(`
       UPDATE products 
@@ -33,7 +42,8 @@ export const updateProductAction = createServerFn({ method: "POST" })
   });
 
 export const toggleProductActiveAction = createServerFn({ method: "POST" })
-  .handler(async ({ data }: { data: { id: string, active: boolean } }) => {
+  .handler(async ({ data }: { data: { id: string, active: boolean, adminId: string } }) => {
+    checkAdmin(data.adminId);
     db.prepare("UPDATE products SET active = ? WHERE id = ?").run(data.active ? 1 : 0, data.id);
     return { success: true };
   });
@@ -93,12 +103,13 @@ export const getAppointmentsAction = createServerFn({ method: "GET" })
 
 export const createAppointmentAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: any }) => {
+    const id = crypto.randomUUID();
     const stmt = db.prepare(`
       INSERT INTO appointments (id, client_id, client_name, product_id, service_name, starts_at, duration_min, notes, created_by)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    stmt.run(data.id, data.client_id, data.client_name, data.product_id, data.service_name, data.starts_at, data.duration_min, data.notes, data.created_by);
-    return { success: true };
+    stmt.run(id, data.client_id, data.client_name, data.product_id, data.service_name, data.starts_at, data.duration_min, data.notes, data.created_by);
+    return { success: true, id };
   });
 
 export const updateAppointmentStatusAction = createServerFn({ method: "POST" })
@@ -148,9 +159,10 @@ export const getSaleItemsAction = createServerFn({ method: "GET" })
     return db.prepare("SELECT * FROM sale_items WHERE sale_id = ?").all(data);
   });
 
-// BACKUP
-export const downloadDatabaseAction = createServerFn({ method: "GET" })
-  .handler(async () => {
+// BACKUP & ADMIN
+export const downloadDatabaseAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: { adminId: string } }) => {
+    checkAdmin(data.adminId);
     const dbPath = join(process.cwd(), "pos.db");
     const buffer = readFileSync(dbPath);
     return {
@@ -159,37 +171,37 @@ export const downloadDatabaseAction = createServerFn({ method: "GET" })
     };
   });
 
-export const getTablesAction = createServerFn({ method: "GET" })
-  .handler(async () => {
+export const getTablesAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: { adminId: string } }) => {
+    checkAdmin(data.adminId);
     return db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all();
   });
 
-export const getTableDataAction = createServerFn({ method: "GET" })
-  .handler(async ({ data: tableName }: { data: string }) => {
-    return db.prepare(`SELECT * FROM ${tableName} LIMIT 100`).all();
+export const getTableDataAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: { tableName: string, adminId: string } }) => {
+    checkAdmin(data.adminId);
+    return db.prepare(`SELECT * FROM ${data.tableName} LIMIT 100`).all();
   });
 
 export const importFromSupabaseAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: { products: any[], clients: any[] } }) => {
-    const { products, clients } = data;
-    console.log(`Importing ${products.length} products and ${clients.length} clients to local SQLite...`);
-
+    // Note: This one is called during setup, we could also protect it
     const transaction = db.transaction(() => {
-      if (products.length > 0) {
+      if (data.products.length > 0) {
         const stmt = db.prepare(`
           INSERT OR REPLACE INTO products (id, name, category, type, price, active, sort_order)
           VALUES (?, ?, ?, ?, ?, ?, ?)
         `);
-        for (const p of products) {
+        for (const p of data.products) {
           stmt.run(p.id, p.name, p.category, p.type, p.price, p.active ? 1 : 0, p.sort_order);
         }
       }
-      if (clients.length > 0) {
+      if (data.clients.length > 0) {
         const stmt = db.prepare(`
           INSERT OR REPLACE INTO clients (id, first_name, last_name, phone, email, is_member, children_count, notes)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `);
-        for (const c of clients) {
+        for (const c of data.clients) {
           stmt.run(c.id, c.first_name, c.last_name, c.phone, c.email, c.is_member ? 1 : 0, c.children_count, c.notes);
         }
       }
@@ -213,15 +225,10 @@ export const signUpAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: any }) => {
     const { email, password, fullName } = data;
     const id = crypto.randomUUID();
-    
-    // Toutes les nouvelles inscriptions sont forcées en rôle 'cashier'
-    // L'unique admin est admin@mums.home (créé à l'initialisation)
     const role = "cashier";
-
     db.prepare(`
       INSERT INTO users (id, email, password, full_name, role)
       VALUES (?, ?, ?, ?, ?)
     `).run(id, email, password, fullName, role);
-    
     return { id, email, fullName, role };
   });

@@ -81,7 +81,7 @@ function CataloguePage() {
 
   const handleUpdate = async (id: string) => {
     try {
-      await updateProductAction({ data: { id, ...editForm } });
+      await updateProductAction({ data: { id, adminId: user?.id, ...editForm } });
       toast.success("Produit mis à jour");
       setEditingId(null);
       fetchProducts();
@@ -92,7 +92,7 @@ function CataloguePage() {
 
   const handleToggleActive = async (id: string, active: boolean) => {
     try {
-      await toggleProductActiveAction({ data: { id, active } });
+      await toggleProductActiveAction({ data: { id, active, adminId: user?.id } });
       fetchProducts();
     } catch (err) {
       toast.error("Erreur lors du changement d'état");
@@ -106,7 +106,7 @@ function CataloguePage() {
     }
 
     try {
-      await createProductAction({ data: newProduct });
+      await createProductAction({ data: { ...newProduct, adminId: user?.id } });
       toast.success("Produit ajouté");
       setIsAddOpen(false);
       setNewProduct({

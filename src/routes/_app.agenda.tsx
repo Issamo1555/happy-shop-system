@@ -175,7 +175,6 @@ function ApptDialog({ products, clients, defaultDay, userId, onSaved }: {
     const startsAt = new Date(`${date}T${time}:00`).toISOString();
     await createAppointmentAction({
       data: {
-        id: crypto.randomUUID(),
         client_id: clientId || null,
         client_name: clientName,
         product_id: product.id,

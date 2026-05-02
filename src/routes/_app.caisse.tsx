@@ -361,9 +361,12 @@ function CaissePage() {
 
         {lastTicket && (
           <div className="pos-card p-5 border-sage">
-            <h3 className="font-display text-lg mb-2 flex items-center gap-2">
-              <Receipt className="w-4 h-4 text-sage-foreground" /> Dernier ticket
-            </h3>
+            <div className="flex flex-col items-center mb-4">
+              <img src="/logo_mums_home.png" alt="Mums'Home" className="h-12 mb-2" />
+              <h3 className="font-display text-lg flex items-center gap-2">
+                <Receipt className="w-4 h-4 text-sage-foreground" /> Ticket de caisse
+              </h3>
+            </div>
             <p className="text-xs text-muted-foreground mb-3">
               {lastTicket.when.toLocaleString("fr-FR")}
               {lastTicket.clientName ? ` · ${lastTicket.clientName}` : ""}
