@@ -113,22 +113,25 @@ export const updateAppointmentStatusAction = createServerFn({ method: "POST" })
 export const saveSaleAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: any }) => {
     const { sale, items } = data;
+    const saleId = sale.id || crypto.randomUUID();
+    
     const transaction = db.transaction(() => {
       db.prepare(`
         INSERT INTO sales (id, cashier_id, client_id, subtotal, discount, discount_reason, total, payment_method, note)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(sale.id, sale.cashier_id, sale.client_id, sale.subtotal, sale.discount, sale.discount_reason, sale.total, sale.payment_method, sale.note);
+      `).run(saleId, sale.cashier_id, sale.client_id, sale.subtotal, sale.discount, sale.discount_reason, sale.total, sale.payment_method, sale.note);
 
       const itemStmt = db.prepare(`
         INSERT INTO sale_items (id, sale_id, product_id, product_name, unit_price, quantity, line_total)
         VALUES (?, ?, ?, ?, ?, ?, ?)
       `);
       for (const item of items) {
-        itemStmt.run(item.id, item.sale_id, item.product_id, item.product_name, item.unit_price, item.quantity, item.line_total);
+        const itemId = item.id || crypto.randomUUID();
+        itemStmt.run(itemId, saleId, item.product_id, item.product_name, item.unit_price, item.quantity, item.line_total);
       }
     });
     transaction();
-    return { success: true };
+    return { success: true, id: saleId };
   });
 
 export const getSalesAction = createServerFn({ method: "GET" })

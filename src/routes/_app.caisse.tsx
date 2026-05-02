@@ -124,14 +124,12 @@ function CaissePage() {
     }
     setSubmitting(true);
     try {
-      const saleId = crypto.randomUUID();
       const discountReason = [autoDiscount.reason, extraDiscount > 0 ? `Remise manuelle ${extraDiscount} DHS` : ""]
         .filter(Boolean)
         .join(" + ") || null;
 
       const saleData = {
         sale: {
-          id: saleId,
           cashier_id: user.id,
           client_id: clientId || null,
           subtotal: cart.subtotal,
@@ -142,8 +140,6 @@ function CaissePage() {
           note: note || null,
         },
         items: cart.items.map(i => ({
-          id: crypto.randomUUID(),
-          sale_id: saleId,
           product_id: i.productId,
           product_name: i.name,
           unit_price: i.unitPrice,
