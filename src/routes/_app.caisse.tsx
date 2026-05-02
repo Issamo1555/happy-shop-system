@@ -362,9 +362,10 @@ function CaissePage() {
         {lastTicket && (
           <div className="pos-card p-5 border-sage">
             <div className="flex flex-col items-center mb-4">
-              <img src="/logo_mums_home.png" alt="Mums'Home" className="h-12 mb-2" />
-              <h3 className="font-display text-lg flex items-center gap-2">
-                <Receipt className="w-4 h-4 text-sage-foreground" /> Ticket de caisse
+              <img src="/logo.png" alt="Mums'Home" className="h-12 mb-2" />
+              <h3 className="font-display text-lg flex items-center gap-1 text-center flex-col">
+                <span>Mums'Home</span>
+                <span className="text-[10px] uppercase text-muted-foreground font-sans tracking-widest leading-none">Parentalité & Co</span>
               </h3>
             </div>
             <p className="text-xs text-muted-foreground mb-3">
