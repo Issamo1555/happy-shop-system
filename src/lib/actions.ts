@@ -87,10 +87,8 @@ export const consumePackSessionAction = createServerFn({ method: "POST" })
 // APPOINTMENTS
 export const getAppointmentsAction = createServerFn({ method: "GET" })
   .handler(async ({ data }: { data: string }) => {
-    const start = data + "T00:00:00.000Z";
-    const end = data + "T23:59:59.999Z";
-    return db.prepare("SELECT * FROM appointments WHERE starts_at >= ? AND starts_at <= ? ORDER BY starts_at")
-      .all(start, end);
+    return db.prepare("SELECT * FROM appointments WHERE date(starts_at) = ? ORDER BY starts_at")
+      .all(data);
   });
 
 export const createAppointmentAction = createServerFn({ method: "POST" })
@@ -136,15 +134,13 @@ export const saveSaleAction = createServerFn({ method: "POST" })
 
 export const getSalesAction = createServerFn({ method: "GET" })
   .handler(async ({ data }: { data: string }) => {
-    const start = data + "T00:00:00.000Z";
-    const end = data + "T23:59:59.999Z";
     return db.prepare(`
       SELECT s.*, c.first_name, c.last_name 
       FROM sales s 
       LEFT JOIN clients c ON s.client_id = c.id 
-      WHERE s.created_at >= ? AND s.created_at <= ? 
+      WHERE date(s.created_at) = ? 
       ORDER BY s.created_at DESC
-    `).all(start, end);
+    `).all(data);
   });
 
 export const getSaleItemsAction = createServerFn({ method: "GET" })
