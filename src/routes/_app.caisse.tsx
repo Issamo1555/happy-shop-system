@@ -429,37 +429,92 @@ function CaissePage() {
         </div>
 
         {lastTicket && (
-          <div className="pos-card p-5 border-sage animate-in slide-in-from-bottom duration-300">
-            <div className="flex flex-col items-center mb-4">
-              <img src="/logo.png" alt="Mums'Home" className="h-12 mb-2" />
-              <h3 className="font-display text-lg flex items-center gap-1 text-center flex-col">
-                <span>Mums'Home</span>
-                <span className="text-[10px] uppercase text-muted-foreground font-sans tracking-widest leading-none">Parentalité & Co</span>
-              </h3>
+          <div className="pos-card p-6 border-sage animate-in slide-in-from-bottom duration-300 print-zone">
+            {/* TICKET HEADER */}
+            <div className="flex flex-col items-center mb-6 text-center">
+              <img src="/logo.png" alt="Mums'Home" className="h-16 mb-2" />
+              <div className="space-y-1">
+                <h3 className="font-display text-2xl font-bold text-primary leading-none">Mums'Home</h3>
+                <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-sans">Parentalité & Co</p>
+              </div>
+              <div className="mt-4 text-[10px] text-muted-foreground uppercase tracking-wider space-y-0.5">
+                <p>Centre de Bien-être & Accompagnement</p>
+                <p>Casablanca, Maroc</p>
+                <p>Tél: +212 6 XX XX XX XX</p>
+              </div>
             </div>
-            <p className="text-xs text-muted-foreground mb-3">
-              {lastTicket.when.toLocaleString("fr-FR")}
-              {lastTicket.clientName ? ` · ${lastTicket.clientName}` : ""}
-            </p>
-            <div className="text-sm space-y-1 mb-3">
+
+            {/* TICKET INFO */}
+            <div className="border-y border-dashed border-border py-3 mb-4 flex justify-between text-[11px] uppercase tracking-wide text-muted-foreground">
+              <span>{lastTicket.when.toLocaleDateString("fr-FR")} {lastTicket.when.toLocaleTimeString("fr-FR", { hour: '2-digit', minute: '2-digit' })}</span>
+              <span>Ticket #{Math.floor(Math.random() * 10000)}</span>
+            </div>
+
+            {/* CLIENT INFO */}
+            {lastTicket.clientName && (
+              <div className="mb-4 text-xs">
+                <p className="text-[10px] text-muted-foreground uppercase mb-0.5">Client</p>
+                <p className="font-medium">{lastTicket.clientName}</p>
+              </div>
+            )}
+
+            {/* ITEMS */}
+            <div className="space-y-3 mb-6">
+              <div className="flex justify-between text-[10px] uppercase text-muted-foreground font-bold border-b pb-1">
+                <span>Description</span>
+                <span>Total</span>
+              </div>
               {lastTicket.items.map((i) => (
-                <div key={i.productId} className="flex justify-between">
-                  <span>{i.quantity}× {i.name}</span>
-                  <span>{formatDhs(i.unitPrice * i.quantity)}</span>
+                <div key={i.productId} className="flex justify-between items-start text-sm">
+                  <div className="pr-4">
+                    <p className="font-medium leading-tight">{i.name}</p>
+                    <p className="text-[11px] text-muted-foreground">{i.quantity} x {formatDhs(i.unitPrice)}</p>
+                  </div>
+                  <span className="font-medium">{formatDhs(i.unitPrice * i.quantity)}</span>
                 </div>
               ))}
             </div>
-            <div className="border-t pt-2 flex justify-between font-medium">
-              <span>Total payé</span>
-              <span className="text-primary">{formatDhs(lastTicket.total)}</span>
+
+            {/* TOTALS */}
+            <div className="space-y-2 border-t border-dashed border-border pt-4">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Sous-total</span>
+                <span>{formatDhs(lastTicket.subtotal)}</span>
+              </div>
+              {lastTicket.discount > 0 && (
+                <div className="flex justify-between text-sm text-primary">
+                  <span>Remises</span>
+                  <span>-{formatDhs(lastTicket.discount)}</span>
+                </div>
+              )}
+              <div className="flex justify-between items-end pt-2">
+                <span className="font-display text-lg font-bold">TOTAL</span>
+                <span className="font-display text-3xl font-bold text-primary">{formatDhs(lastTicket.total)}</span>
+              </div>
             </div>
+
+            {/* FOOTER */}
+            <div className="mt-10 pt-6 border-t border-border text-center space-y-4">
+              <div className="space-y-1">
+                <p className="text-xs font-medium">Merci de votre visite !</p>
+                <p className="text-[10px] text-muted-foreground">À bientôt chez Mums'Home</p>
+              </div>
+              <div className="flex flex-col items-center gap-1">
+                <div className="w-16 h-16 bg-muted rounded-md flex items-center justify-center">
+                  <p className="text-[8px] text-muted-foreground text-center px-1">QR CODE<br/>BIENTÔT</p>
+                </div>
+                <p className="text-[9px] text-muted-foreground">www.mumshome.ma</p>
+              </div>
+            </div>
+
             <Button
               variant="outline"
               size="sm"
-              className="w-full mt-3"
+              className="w-full mt-6 no-print"
               onClick={() => window.print()}
             >
-              Imprimer le ticket
+              <Receipt className="w-4 h-4 mr-2" />
+              Imprimer le ticket professionnel
             </Button>
           </div>
         )}
