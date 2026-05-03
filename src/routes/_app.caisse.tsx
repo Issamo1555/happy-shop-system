@@ -11,8 +11,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CATEGORY_LABELS, CATEGORY_ORDER, formatDhs } from "@/lib/format";
-import { Plus, Minus, Trash2, ShoppingBag, Receipt, Search } from "lucide-react";
+import { Plus, Minus, Trash2, ShoppingBag, Receipt, Search, Calculator, Banknote } from "lucide-react";
+import { Numpad } from "@/components/Numpad";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_app/caisse")({
@@ -50,6 +52,7 @@ function CaissePage() {
   const [note, setNote] = useState("");
   const [extraDiscount, setExtraDiscount] = useState<number>(0);
   const [submitting, setSubmitting] = useState(false);
+  const [cashReceived, setCashReceived] = useState<number>(0);
   const [lastTicket, setLastTicket] = useState<null | {
     items: typeof cart.items;
     subtotal: number;
@@ -58,6 +61,8 @@ function CaissePage() {
     clientName?: string;
     when: Date;
   }>(null);
+
+  const [numpadValue, setNumpadValue] = useState("0");
 
   useEffect(() => {
     (async () => {
@@ -74,7 +79,6 @@ function CaissePage() {
     [clients, clientId]
   );
 
-  // Auto-discount: adhérent -10%, fratrie 2 enfants -5%, 3+ -10% (non cumulables)
   const autoDiscount = useMemo(() => {
     if (!selectedClient) return { pct: 0, reason: "" };
     const eligible = cart.items.filter((i) =>
@@ -105,6 +109,8 @@ function CaissePage() {
 
   const totalDiscount = autoDiscountAmount + (extraDiscount || 0);
   const total = Math.max(0, cart.subtotal - totalDiscount);
+
+  const changeToReturn = Math.max(0, cashReceived - total);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -150,9 +156,6 @@ function CaissePage() {
 
       await saveSaleAction({ data: saleData });
 
-      // Si client + pack acheté, créer un client_pack localement (optionnel mais recommandé pour suivi offline)
-      // Note: Le schéma local actuel ne gère pas encore client_packs, on pourrait l'ajouter si besoin
-
       setLastTicket({
         items: [...cart.items],
         subtotal: cart.subtotal,
@@ -167,6 +170,7 @@ function CaissePage() {
       setExtraDiscount(0);
       setNote("");
       setClientId("");
+      setCashReceived(0);
       toast.success("Vente enregistrée");
     } catch (err: any) {
       toast.error(err.message ?? "Erreur lors de l'enregistrement");
@@ -264,11 +268,27 @@ function CaissePage() {
                     <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => cart.setQty(i.productId, i.quantity - 1)}>
                       <Minus className="w-3 h-3" />
                     </Button>
-                    <span className="w-6 text-center text-sm font-medium">{i.quantity}</span>
+                    
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button variant="ghost" className="h-7 w-8 p-0 text-sm font-medium">
+                          {i.quantity}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="p-0 border-0 shadow-none w-auto" side="left">
+                        <Numpad 
+                          value={String(i.quantity)} 
+                          title="Quantité"
+                          allowDecimal={false}
+                          onChange={(v) => cart.setQty(i.productId, Number(v) || 1)} 
+                        />
+                      </PopoverContent>
+                    </Popover>
+
                     <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => cart.setQty(i.productId, i.quantity + 1)}>
                       <Plus className="w-3 h-3" />
                     </Button>
-                    <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => cart.remove(i.productId)}>
+                    <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive ml-1" onClick={() => cart.remove(i.productId)}>
                       <Trash2 className="w-3 h-3" />
                     </Button>
                   </div>
@@ -309,14 +329,63 @@ function CaissePage() {
               </div>
               <div>
                 <Label className="text-xs">Remise extra (DHS)</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  value={extraDiscount || ""}
-                  onChange={(e) => setExtraDiscount(Number(e.target.value) || 0)}
-                />
+                <div className="flex gap-1">
+                  <Input
+                    type="number"
+                    min={0}
+                    value={extraDiscount || ""}
+                    onChange={(e) => setExtraDiscount(Number(e.target.value) || 0)}
+                    className="flex-1"
+                  />
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" size="icon" className="shrink-0"><Calculator className="w-4 h-4" /></Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="p-0 border-0 shadow-none w-auto">
+                      <Numpad 
+                        value={String(extraDiscount)} 
+                        title="Remise"
+                        onChange={(v) => setExtraDiscount(Number(v) || 0)} 
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
               </div>
             </div>
+
+            {paymentMethod === "cash" && (
+              <div className="p-3 bg-primary-soft/30 rounded-lg border border-primary/10 space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-semibold text-primary">Calculateur de monnaie</Label>
+                  <Banknote className="w-4 h-4 text-primary" />
+                </div>
+                <div className="grid grid-cols-2 gap-3 items-center">
+                  <div className="space-y-1">
+                    <p className="text-[10px] uppercase text-muted-foreground">Reçu</p>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" className="w-full h-10 justify-start font-display text-lg">
+                          {formatDhs(cashReceived)}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="p-0 border-0 shadow-none w-auto">
+                        <Numpad 
+                          value={String(cashReceived)} 
+                          title="Montant Reçu"
+                          onChange={(v) => setCashReceived(Number(v) || 0)} 
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[10px] uppercase text-muted-foreground">À rendre</p>
+                    <div className="h-10 flex items-center font-display text-xl text-primary font-bold">
+                      {formatDhs(changeToReturn)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <Textarea
               placeholder="Note (optionnel)"
@@ -349,7 +418,7 @@ function CaissePage() {
             </div>
 
             <Button
-              className="w-full h-12 text-base"
+              className="w-full h-12 text-base shadow-lg shadow-primary/20"
               disabled={submitting || cart.items.length === 0}
               onClick={validateSale}
             >
@@ -360,7 +429,7 @@ function CaissePage() {
         </div>
 
         {lastTicket && (
-          <div className="pos-card p-5 border-sage">
+          <div className="pos-card p-5 border-sage animate-in slide-in-from-bottom duration-300">
             <div className="flex flex-col items-center mb-4">
               <img src="/logo.png" alt="Mums'Home" className="h-12 mb-2" />
               <h3 className="font-display text-lg flex items-center gap-1 text-center flex-col">
