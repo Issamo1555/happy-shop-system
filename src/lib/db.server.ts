@@ -1,8 +1,11 @@
 import Database from "better-sqlite3";
 import { join } from "path";
 
-// The database file will be stored in the root of the project (on the hard drive)
-const dbPath = join(process.cwd(), "pos.db");
+// In production (Docker), store DB in /app/data for volume persistence
+// In development, store in the project root
+const dbPath = process.env.NODE_ENV === "production"
+  ? join(process.cwd(), "data", "pos.db")
+  : join(process.cwd(), "pos.db");
 export const db = new Database(dbPath);
 
 // Enable WAL mode for better performance

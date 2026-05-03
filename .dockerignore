@@ -1,0 +1,10 @@
+node_modules
+.git
+.output
+.tanstack
+pos.db
+pos.db-shm
+pos.db-wal
+*.log
+.env.local
+.env.*.local
