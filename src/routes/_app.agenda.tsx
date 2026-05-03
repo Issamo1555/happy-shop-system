@@ -59,7 +59,7 @@ function AgendaPage() {
   useEffect(() => { load(); }, [day]);
 
   const setStatus = async (id: string, status: Appt["status"]) => {
-    await updateAppointmentStatusAction({ data: { id, status } });
+    await updateAppointmentStatusAction({ data: { id, status, userId: user?.id } });
     load();
     toast.success("Statut mis à jour");
   };

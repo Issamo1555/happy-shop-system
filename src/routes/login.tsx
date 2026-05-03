@@ -18,6 +18,7 @@ function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   if (!loading && isAuthenticated) {
@@ -41,7 +42,7 @@ function LoginPage() {
     e.preventDefault();
     setSubmitting(true);
     try {
-      await signUp(email, password, name);
+      await signUp(email, password, name, inviteCode);
       toast.success("Compte créé. Vous pouvez vous connecter.");
     } catch (err: any) {
       toast.error(err.message ?? "Inscription impossible");
@@ -142,6 +143,17 @@ function LoginPage() {
                     required 
                     value={password} 
                     onChange={(e) => setPassword(e.target.value)} 
+                    className="bg-white/50 border-white/30"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="invite-code" className="text-xs">Code d'invitation</Label>
+                  <Input 
+                    id="invite-code" 
+                    required 
+                    placeholder="Demandez-le à l'administrateur"
+                    value={inviteCode} 
+                    onChange={(e) => setInviteCode(e.target.value)} 
                     className="bg-white/50 border-white/30"
                   />
                 </div>

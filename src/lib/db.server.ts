@@ -1,5 +1,6 @@
 import Database from "better-sqlite3";
 import { join } from "path";
+import bcrypt from "bcryptjs";
 
 // In production (Docker), store DB in /app/data for volume persistence
 // In development, store in the project root
@@ -104,11 +105,34 @@ export const initServerDb = () => {
       role TEXT NOT NULL DEFAULT 'cashier',
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
-
-    -- Insert default admin if not exists
-    INSERT OR IGNORE INTO users (id, email, password, full_name, role)
-    VALUES ('admin-id', 'admin@mums.home', 'admin123', 'Administrateur', 'admin');
   `);
+
+  // Insert default admin with HASHED password (if not exists)
+  const existingAdmin = db.prepare("SELECT id FROM users WHERE email = ?").get("admin@mums.home") as any;
+  if (!existingAdmin) {
+    const hashedPassword = bcrypt.hashSync("admin123", 10);
+    db.prepare(`
+      INSERT INTO users (id, email, password, full_name, role)
+      VALUES (?, ?, ?, ?, ?)
+    `).run("admin-id", "admin@mums.home", hashedPassword, "Administrateur", "admin");
+  } else {
+    // Migrate existing plain-text password to hashed if needed
+    const admin = db.prepare("SELECT password FROM users WHERE email = ?").get("admin@mums.home") as any;
+    if (admin && !admin.password.startsWith("$2")) {
+      // Password is still plain text, hash it
+      const hashedPassword = bcrypt.hashSync(admin.password, 10);
+      db.prepare("UPDATE users SET password = ? WHERE email = ?").run(hashedPassword, "admin@mums.home");
+    }
+  }
+
+  // Migrate ALL existing plain-text passwords to hashed
+  const users = db.prepare("SELECT id, password FROM users").all() as any[];
+  for (const u of users) {
+    if (!u.password.startsWith("$2")) {
+      const hashed = bcrypt.hashSync(u.password, 10);
+      db.prepare("UPDATE users SET password = ? WHERE id = ?").run(hashed, u.id);
+    }
+  }
 };
 
 // Auto-initialize when the server starts

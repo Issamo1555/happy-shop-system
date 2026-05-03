@@ -67,7 +67,7 @@ function ClientsPage() {
 
   const consumeSession = async (pack: Pack) => {
     if (pack.sessions_remaining <= 0) return;
-    await consumePackSessionAction({ data: pack.id });
+    await consumePackSessionAction({ data: { packId: pack.id, userId: user?.id } });
     if (selectedClient) openClient(selectedClient);
     toast.success("Séance décomptée");
   };
@@ -96,7 +96,7 @@ function ClientsPage() {
           <DialogTrigger asChild>
             <Button><Plus className="w-4 h-4 mr-2" />Nouveau client</Button>
           </DialogTrigger>
-          <ClientDialog client={editing} onSaved={() => { setOpen(false); setEditing(null); load(); }} />
+          <ClientDialog client={editing} userId={user?.id} onSaved={() => { setOpen(false); setEditing(null); load(); }} />
         </Dialog>
       </div>
 
@@ -197,7 +197,7 @@ function ClientsPage() {
   );
 }
 
-function ClientDialog({ client, onSaved }: { client: Client | null; onSaved: () => void }) {
+function ClientDialog({ client, userId, onSaved }: { client: Client | null; userId?: string; onSaved: () => void }) {
   const [first, setFirst] = useState(client?.first_name ?? "");
   const [last, setLast] = useState(client?.last_name ?? "");
   const [phone, setPhone] = useState(client?.phone ?? "");
@@ -219,9 +219,9 @@ function ClientDialog({ client, onSaved }: { client: Client | null; onSaved: () 
     };
     try {
       if (client) {
-        await updateClientAction({ data: { id: client.id, ...payload } });
+        await updateClientAction({ data: { id: client.id, userId, ...payload } });
       } else {
-        await createClientAction({ data: payload });
+        await createClientAction({ data: { ...payload, userId } });
       }
       toast.success("Client enregistré");
       onSaved();

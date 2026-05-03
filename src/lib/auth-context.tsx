@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { loginAction, signUpAction } from "./actions";
+import { loginAction, signUpAction, validateSessionAction } from "./actions";
 
 export type AppRole = "admin" | "cashier";
 
@@ -11,7 +11,7 @@ interface AuthState {
   isAdmin: boolean;
   isStaff: boolean;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string, fullName: string) => Promise<void>;
+  signUp: (email: string, password: string, fullName: string, inviteCode: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -22,11 +22,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const savedUser = localStorage.getItem("pos_user");
-    if (savedUser) {
-      setUser(JSON.parse(savedUser));
-    }
-    setLoading(false);
+    // Validate session server-side on app load
+    const validateSession = async () => {
+      try {
+        const savedUser = localStorage.getItem("pos_user");
+        if (savedUser) {
+          const parsed = JSON.parse(savedUser);
+          // Verify the user still exists and get REAL role from server
+          const serverUser = await validateSessionAction({ data: { userId: parsed.id } });
+          if (serverUser) {
+            setUser(serverUser);
+            localStorage.setItem("pos_user", JSON.stringify(serverUser));
+          } else {
+            // User no longer exists in DB - clear session
+            localStorage.removeItem("pos_user");
+            setUser(null);
+          }
+        }
+      } catch {
+        localStorage.removeItem("pos_user");
+        setUser(null);
+      }
+      setLoading(false);
+    };
+    validateSession();
   }, []);
 
   const signIn = async (email: string, password: string) => {
@@ -39,9 +58,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const signUp = async (email: string, password: string, fullName: string) => {
+  const signUp = async (email: string, password: string, fullName: string, inviteCode: string) => {
     try {
-      await signUpAction({ data: { email, password, fullName } });
+      await signUpAction({ data: { email, password, fullName, inviteCode } });
     } catch (err: any) {
       throw new Error(err.message || "Erreur lors de l'inscription");
     }
@@ -52,6 +71,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem("pos_user");
   };
 
+  // Role is now always from server validation, not localStorage
   const roles = user ? [user.role as AppRole] : [];
 
   const value: AuthState = {
