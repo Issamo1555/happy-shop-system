@@ -152,8 +152,42 @@
 
 @layer base {
   * {
-    border-color: var(--color-border);
+    @apply border-border;
   }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* PRINT STYLES */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .print-zone, .print-zone * {
+    visibility: visible;
+  }
+  .print-zone {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    max-width: 80mm; /* Standard receipt width */
+    margin: 0 auto;
+    padding: 0;
+    background: white !important;
+    color: black !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  @page {
+    margin: 0;
+    size: auto;
+  }
+}
+
+@layer base {
   html, body {
     background-color: var(--color-background);
     color: var(--color-foreground);

@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { getAppointmentsAction, getProductsAction, getClientsAction, updateAppointmentStatusAction, createAppointmentAction } from "@/lib/actions";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,36 +42,24 @@ function AgendaPage() {
   const [open, setOpen] = useState(false);
 
   const load = async () => {
-    const start = startOfDay(day).toISOString();
-    const end = addDays(startOfDay(day), 1).toISOString();
-    const { data } = await supabase
-      .from("appointments")
-      .select("*")
-      .gte("starts_at", start)
-      .lt("starts_at", end)
-      .order("starts_at");
-    setAppts((data ?? []) as Appt[]);
+    const dayStr = format(day, "yyyy-MM-dd");
+    const data = await getAppointmentsAction({ data: dayStr });
+    setAppts(data as unknown as Appt[]);
   };
 
   useEffect(() => {
     (async () => {
-      const { data: pr } = await supabase
-        .from("products")
-        .select("id,name,bookable,duration_min")
-        .eq("bookable", true)
-        .order("sort_order");
-      setProducts((pr ?? []) as Product[]);
-      const { data: cl } = await supabase
-        .from("clients")
-        .select("id,first_name,last_name")
-        .order("last_name");
-      setClients((cl ?? []) as Client[]);
+      const pr = await getProductsAction();
+      setProducts(pr as unknown as Product[]);
+      
+      const cl = await getClientsAction();
+      setClients(cl as unknown as Client[]);
     })();
   }, []);
   useEffect(() => { load(); }, [day]);
 
   const setStatus = async (id: string, status: Appt["status"]) => {
-    await supabase.from("appointments").update({ status }).eq("id", id);
+    await updateAppointmentStatusAction({ data: { id, status, userId: user?.id } });
     load();
     toast.success("Statut mis à jour");
   };
@@ -185,18 +173,21 @@ function ApptDialog({ products, clients, defaultDay, userId, onSaved }: {
       return;
     }
     const startsAt = new Date(`${date}T${time}:00`).toISOString();
-    const { error } = await supabase.from("appointments").insert({
-      client_id: clientId || null,
-      client_name: clientName,
-      product_id: product.id,
-      service_name: product.name,
-      starts_at: startsAt,
-      duration_min: duration,
-      notes: notes || null,
-      created_by: userId ?? null,
+    await createAppointmentAction({
+      data: {
+        client_id: clientId || null,
+        client_name: clientName,
+        product_id: product.id,
+        service_name: product.name,
+        starts_at: startsAt,
+        duration_min: duration,
+        notes: notes || null,
+        created_by: userId ?? null,
+      }
     });
-    if (error) toast.error(error.message);
-    else { toast.success("Rendez-vous créé"); onSaved(); }
+    
+    toast.success("Rendez-vous créé"); 
+    onSaved();
   };
 
   return (

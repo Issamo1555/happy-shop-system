@@ -13,7 +13,9 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppHistoriqueRouteImport } from './routes/_app.historique'
+import { Route as AppDbAdminRouteImport } from './routes/_app.db-admin'
 import { Route as AppClientsRouteImport } from './routes/_app.clients'
+import { Route as AppCatalogueRouteImport } from './routes/_app.catalogue'
 import { Route as AppCaisseRouteImport } from './routes/_app.caisse'
 import { Route as AppAgendaRouteImport } from './routes/_app.agenda'
 
@@ -36,9 +38,19 @@ const AppHistoriqueRoute = AppHistoriqueRouteImport.update({
   path: '/historique',
   getParentRoute: () => AppRoute,
 } as any)
+const AppDbAdminRoute = AppDbAdminRouteImport.update({
+  id: '/db-admin',
+  path: '/db-admin',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppClientsRoute = AppClientsRouteImport.update({
   id: '/clients',
   path: '/clients',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppCatalogueRoute = AppCatalogueRouteImport.update({
+  id: '/catalogue',
+  path: '/catalogue',
   getParentRoute: () => AppRoute,
 } as any)
 const AppCaisseRoute = AppCaisseRouteImport.update({
@@ -57,7 +69,9 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/agenda': typeof AppAgendaRoute
   '/caisse': typeof AppCaisseRoute
+  '/catalogue': typeof AppCatalogueRoute
   '/clients': typeof AppClientsRoute
+  '/db-admin': typeof AppDbAdminRoute
   '/historique': typeof AppHistoriqueRoute
 }
 export interface FileRoutesByTo {
@@ -65,7 +79,9 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/agenda': typeof AppAgendaRoute
   '/caisse': typeof AppCaisseRoute
+  '/catalogue': typeof AppCatalogueRoute
   '/clients': typeof AppClientsRoute
+  '/db-admin': typeof AppDbAdminRoute
   '/historique': typeof AppHistoriqueRoute
 }
 export interface FileRoutesById {
@@ -75,14 +91,32 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/_app/agenda': typeof AppAgendaRoute
   '/_app/caisse': typeof AppCaisseRoute
+  '/_app/catalogue': typeof AppCatalogueRoute
   '/_app/clients': typeof AppClientsRoute
+  '/_app/db-admin': typeof AppDbAdminRoute
   '/_app/historique': typeof AppHistoriqueRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/login' | '/agenda' | '/caisse' | '/clients' | '/historique'
+  fullPaths:
+    | '/'
+    | '/login'
+    | '/agenda'
+    | '/caisse'
+    | '/catalogue'
+    | '/clients'
+    | '/db-admin'
+    | '/historique'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/login' | '/agenda' | '/caisse' | '/clients' | '/historique'
+  to:
+    | '/'
+    | '/login'
+    | '/agenda'
+    | '/caisse'
+    | '/catalogue'
+    | '/clients'
+    | '/db-admin'
+    | '/historique'
   id:
     | '__root__'
     | '/'
@@ -90,7 +124,9 @@ export interface FileRouteTypes {
     | '/login'
     | '/_app/agenda'
     | '/_app/caisse'
+    | '/_app/catalogue'
     | '/_app/clients'
+    | '/_app/db-admin'
     | '/_app/historique'
   fileRoutesById: FileRoutesById
 }
@@ -130,11 +166,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppHistoriqueRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/db-admin': {
+      id: '/_app/db-admin'
+      path: '/db-admin'
+      fullPath: '/db-admin'
+      preLoaderRoute: typeof AppDbAdminRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/clients': {
       id: '/_app/clients'
       path: '/clients'
       fullPath: '/clients'
       preLoaderRoute: typeof AppClientsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/catalogue': {
+      id: '/_app/catalogue'
+      path: '/catalogue'
+      fullPath: '/catalogue'
+      preLoaderRoute: typeof AppCatalogueRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/caisse': {
@@ -157,14 +207,18 @@ declare module '@tanstack/react-router' {
 interface AppRouteChildren {
   AppAgendaRoute: typeof AppAgendaRoute
   AppCaisseRoute: typeof AppCaisseRoute
+  AppCatalogueRoute: typeof AppCatalogueRoute
   AppClientsRoute: typeof AppClientsRoute
+  AppDbAdminRoute: typeof AppDbAdminRoute
   AppHistoriqueRoute: typeof AppHistoriqueRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppAgendaRoute: AppAgendaRoute,
   AppCaisseRoute: AppCaisseRoute,
+  AppCatalogueRoute: AppCatalogueRoute,
   AppClientsRoute: AppClientsRoute,
+  AppDbAdminRoute: AppDbAdminRoute,
   AppHistoriqueRoute: AppHistoriqueRoute,
 }
 

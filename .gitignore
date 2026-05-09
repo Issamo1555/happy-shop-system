@@ -30,3 +30,18 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# SQLite
+*.db
+*.db-shm
+*.db-wal
+
+# Environment secrets
+.env
+.env.*
+!.env.example
+
+# Build/Package output
+package-client/
+*.tar.gz
+*.tar

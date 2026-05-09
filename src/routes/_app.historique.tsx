@@ -1,14 +1,24 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { getSalesAction, getSaleItemsAction } from "@/lib/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { ChevronLeft, ChevronRight, Receipt as ReceiptIcon, TrendingUp } from "lucide-react";
+import { ChevronLeft, ChevronRight, Receipt as ReceiptIcon, FileDown } from "lucide-react";
 import { addDays, format, startOfDay } from "date-fns";
 import { fr } from "date-fns/locale";
 import { formatDhs } from "@/lib/format";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ZReportModal } from "@/components/ZReportModal";
+import { toast } from "sonner";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
 
 export const Route = createFileRoute("/_app/historique")({
   component: HistoryPage,
@@ -46,24 +56,55 @@ function HistoryPage() {
   const [search, setSearch] = useState("");
   const [opened, setOpened] = useState<Sale | null>(null);
   const [items, setItems] = useState<SaleItem[]>([]);
+  const [isZModalOpen, setIsZModalOpen] = useState(false);
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
   const load = async () => {
-    const start = startOfDay(day).toISOString();
-    const end = addDays(startOfDay(day), 1).toISOString();
-    const { data } = await supabase
-      .from("sales")
-      .select("*, clients(first_name,last_name)")
-      .gte("created_at", start)
-      .lt("created_at", end)
-      .order("created_at", { ascending: false });
-    setSales((data ?? []) as Sale[]);
+    const dayStr = format(day, "yyyy-MM-dd");
+    const data = await getSalesAction({ data: dayStr });
+    const mappedSales = (data as any[]).map((r: any) => ({
+      ...r,
+      clients: r.first_name ? { first_name: r.first_name, last_name: r.last_name } : null
+    }));
+    setSales(mappedSales as Sale[]);
+    setCurrentPage(1); // Reset page on date load
   };
   useEffect(() => { load(); }, [day]);
 
   const openDetail = async (s: Sale) => {
     setOpened(s);
-    const { data } = await supabase.from("sale_items").select("*").eq("sale_id", s.id);
-    setItems((data ?? []) as SaleItem[]);
+    const data = await getSaleItemsAction({ data: s.id });
+    setItems(data as unknown as SaleItem[]);
+  };
+
+  const handleExport = () => {
+    if (sales.length === 0) return;
+    const headers = ["ID", "Heure", "Client", "Sous-total", "Remise", "Total", "Paiement", "Note"];
+    const csvRows = [
+      headers.join(','),
+      ...sales.map(s => {
+        const row = [
+          s.id.slice(0, 8),
+          format(new Date(s.created_at), "HH:mm"),
+          s.clients ? `${s.clients.first_name} ${s.clients.last_name ?? ""}` : 'Anonyme',
+          s.subtotal,
+          s.discount,
+          s.total,
+          PAY_LABELS[s.payment_method],
+          s.note || ""
+        ];
+        return row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',');
+      })
+    ];
+    const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `ventes_${format(day, "yyyy-MM-dd")}.csv`);
+    link.click();
+    toast.success("Historique exporté");
   };
 
   const filtered = useMemo(() => {
@@ -74,6 +115,9 @@ function HistoryPage() {
         .toLowerCase().includes(q)
     );
   }, [sales, search]);
+
+  const totalPages = Math.ceil(filtered.length / itemsPerPage);
+  const paginatedSales = filtered.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   const totals = useMemo(() => {
     const total = sales.reduce((s, x) => s + Number(x.total), 0);
@@ -88,6 +132,17 @@ function HistoryPage() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="font-display text-3xl text-primary flex-1">Historique des ventes</h1>
+        
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" className="gap-2" onClick={handleExport} disabled={sales.length === 0}>
+            <FileDown className="w-4 h-4" />
+            Export CSV
+          </Button>
+          <Button variant="outline" size="sm" className="gap-2" onClick={() => setIsZModalOpen(true)}>
+            <ReceiptIcon className="w-4 h-4" /> Rapport Z
+          </Button>
+        </div>
+
         <div className="flex items-center gap-1 pos-card p-1">
           <Button size="icon" variant="ghost" onClick={() => setDay((d) => addDays(d, -1))}><ChevronLeft className="w-4 h-4" /></Button>
           <span className="px-3 text-sm font-medium min-w-[180px] text-center">
@@ -96,10 +151,9 @@ function HistoryPage() {
           <Button size="icon" variant="ghost" onClick={() => setDay((d) => addDays(d, 1))}><ChevronRight className="w-4 h-4" /></Button>
           <Button size="sm" variant="ghost" onClick={() => setDay(startOfDay(new Date()))}>Aujourd'hui</Button>
         </div>
-        <Input placeholder="Rechercher..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-56" />
+        <Input placeholder="Rechercher..." value={search} onChange={(e) => { setSearch(e.target.value); setCurrentPage(1); }} className="w-56" />
       </div>
 
-      {/* SUMMARY */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div className="pos-card p-4">
           <p className="text-xs uppercase tracking-wider text-muted-foreground">CA du jour</p>
@@ -117,15 +171,14 @@ function HistoryPage() {
         ))}
       </div>
 
-      {/* LIST */}
       <div className="pos-card divide-y divide-border">
-        {filtered.length === 0 ? (
+        {paginatedSales.length === 0 ? (
           <div className="p-12 text-center text-muted-foreground">
             <ReceiptIcon className="w-10 h-10 mx-auto mb-2 opacity-50" />
             Aucune vente.
           </div>
         ) : (
-          filtered.map((s) => (
+          paginatedSales.map((s) => (
             <button key={s.id} onClick={() => openDetail(s)} className="w-full p-4 flex items-center gap-4 hover:bg-muted/40 text-left transition-colors">
               <div className="text-center min-w-[64px]">
                 <p className="font-mono text-sm">{format(new Date(s.created_at), "HH:mm")}</p>
@@ -143,6 +196,32 @@ function HistoryPage() {
           ))
         )}
       </div>
+
+      {totalPages > 1 && (
+        <Pagination className="mt-4">
+          <PaginationContent>
+            <PaginationItem>
+              <PaginationPrevious
+                href="#"
+                onClick={(e) => { e.preventDefault(); setCurrentPage((p) => Math.max(1, p - 1)); }}
+                className={currentPage === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
+              />
+            </PaginationItem>
+            <PaginationItem>
+              <span className="text-sm text-muted-foreground mx-4">
+                Page {currentPage} sur {totalPages}
+              </span>
+            </PaginationItem>
+            <PaginationItem>
+              <PaginationNext
+                href="#"
+                onClick={(e) => { e.preventDefault(); setCurrentPage((p) => Math.min(totalPages, p + 1)); }}
+                className={currentPage === totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
+              />
+            </PaginationItem>
+          </PaginationContent>
+        </Pagination>
+      )}
 
       <Dialog open={!!opened} onOpenChange={(v) => !v && setOpened(null)}>
         <DialogContent>
@@ -184,6 +263,14 @@ function HistoryPage() {
           )}
         </DialogContent>
       </Dialog>
+      
+      <ZReportModal 
+        open={isZModalOpen} 
+        onOpenChange={setIsZModalOpen}
+        day={day}
+        sales={sales}
+        totals={totals}
+      />
     </div>
   );
 }

@@ -1,0 +1,29 @@
+# ============================================
+# Mums'Home POS - Docker Compose
+# ============================================
+# Versions verrouillées :
+#   Image base : node:20.18.1-alpine3.20
+#   App port   : 8080
+#   SQLite     : persisté via volume Docker
+
+services:
+  pos:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: mumshome-pos:1.0.1
+    container_name: mums-home-pos
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    volumes:
+      # Persist SQLite database outside the container
+      - pos-data:/app/data
+    environment:
+      - NODE_ENV=production
+      - PORT=8080
+      - HOST=0.0.0.0
+
+volumes:
+  pos-data:
+    driver: local
