@@ -11,7 +11,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Badge } from "@/components/ui/badge";
 import { Plus, Search, Phone, Mail, Star, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
 export const Route = createFileRoute("/_app/clients")({
   component: ClientsPage,
 });
@@ -45,9 +52,13 @@ function ClientsPage() {
   const [packs, setPacks] = useState<Pack[]>([]);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
 
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+
   const load = async () => {
     const data = await getClientsAction();
     setClients((data ?? []) as Client[]);
+    setCurrentPage(1); // Reset page on load
   };
   useEffect(() => { load(); }, []);
 
@@ -64,6 +75,9 @@ function ClientsPage() {
       .toLowerCase()
       .includes(q);
   });
+
+  const totalPages = Math.ceil(filtered.length / itemsPerPage);
+  const paginatedClients = filtered.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   const consumeSession = async (pack: Pack) => {
     if (pack.sessions_remaining <= 0) return;
@@ -90,7 +104,7 @@ function ClientsPage() {
         <h1 className="font-display text-3xl text-primary flex-1">Clients</h1>
         <div className="relative">
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <Input placeholder="Rechercher..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 w-64" />
+          <Input placeholder="Rechercher..." value={search} onChange={(e) => { setSearch(e.target.value); setCurrentPage(1); }} className="pl-9 w-64" />
         </div>
         <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) setEditing(null); }}>
           <DialogTrigger asChild>
@@ -101,7 +115,7 @@ function ClientsPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-        {filtered.map((c) => (
+        {paginatedClients.map((c) => (
           <button
             key={c.id}
             onClick={() => openClient(c)}
@@ -125,10 +139,36 @@ function ClientsPage() {
             </div>
           </button>
         ))}
-        {filtered.length === 0 && (
+        {paginatedClients.length === 0 && (
           <p className="col-span-full text-center text-muted-foreground py-12">Aucun client</p>
         )}
       </div>
+
+      {totalPages > 1 && (
+        <Pagination className="mt-4">
+          <PaginationContent>
+            <PaginationItem>
+              <PaginationPrevious
+                href="#"
+                onClick={(e) => { e.preventDefault(); setCurrentPage((p) => Math.max(1, p - 1)); }}
+                className={currentPage === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
+              />
+            </PaginationItem>
+            <PaginationItem>
+              <span className="text-sm text-muted-foreground mx-4">
+                Page {currentPage} sur {totalPages}
+              </span>
+            </PaginationItem>
+            <PaginationItem>
+              <PaginationNext
+                href="#"
+                onClick={(e) => { e.preventDefault(); setCurrentPage((p) => Math.min(totalPages, p + 1)); }}
+                className={currentPage === totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
+              />
+            </PaginationItem>
+          </PaginationContent>
+        </Pagination>
+      )}
 
       {/* Detail dialog */}
       <Dialog open={!!selectedClient} onOpenChange={(v) => !v && setSelectedClient(null)}>

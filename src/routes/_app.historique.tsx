@@ -11,6 +11,14 @@ import { formatDhs } from "@/lib/format";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ZReportModal } from "@/components/ZReportModal";
 import { toast } from "sonner";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
 
 export const Route = createFileRoute("/_app/historique")({
   component: HistoryPage,
@@ -50,6 +58,9 @@ function HistoryPage() {
   const [items, setItems] = useState<SaleItem[]>([]);
   const [isZModalOpen, setIsZModalOpen] = useState(false);
 
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+
   const load = async () => {
     const dayStr = format(day, "yyyy-MM-dd");
     const data = await getSalesAction({ data: dayStr });
@@ -58,6 +69,7 @@ function HistoryPage() {
       clients: r.first_name ? { first_name: r.first_name, last_name: r.last_name } : null
     }));
     setSales(mappedSales as Sale[]);
+    setCurrentPage(1); // Reset page on date load
   };
   useEffect(() => { load(); }, [day]);
 
@@ -104,6 +116,9 @@ function HistoryPage() {
     );
   }, [sales, search]);
 
+  const totalPages = Math.ceil(filtered.length / itemsPerPage);
+  const paginatedSales = filtered.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
   const totals = useMemo(() => {
     const total = sales.reduce((s, x) => s + Number(x.total), 0);
     const byMethod: Record<string, number> = {};
@@ -136,7 +151,7 @@ function HistoryPage() {
           <Button size="icon" variant="ghost" onClick={() => setDay((d) => addDays(d, 1))}><ChevronRight className="w-4 h-4" /></Button>
           <Button size="sm" variant="ghost" onClick={() => setDay(startOfDay(new Date()))}>Aujourd'hui</Button>
         </div>
-        <Input placeholder="Rechercher..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-56" />
+        <Input placeholder="Rechercher..." value={search} onChange={(e) => { setSearch(e.target.value); setCurrentPage(1); }} className="w-56" />
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -157,13 +172,13 @@ function HistoryPage() {
       </div>
 
       <div className="pos-card divide-y divide-border">
-        {filtered.length === 0 ? (
+        {paginatedSales.length === 0 ? (
           <div className="p-12 text-center text-muted-foreground">
             <ReceiptIcon className="w-10 h-10 mx-auto mb-2 opacity-50" />
             Aucune vente.
           </div>
         ) : (
-          filtered.map((s) => (
+          paginatedSales.map((s) => (
             <button key={s.id} onClick={() => openDetail(s)} className="w-full p-4 flex items-center gap-4 hover:bg-muted/40 text-left transition-colors">
               <div className="text-center min-w-[64px]">
                 <p className="font-mono text-sm">{format(new Date(s.created_at), "HH:mm")}</p>
@@ -181,6 +196,32 @@ function HistoryPage() {
           ))
         )}
       </div>
+
+      {totalPages > 1 && (
+        <Pagination className="mt-4">
+          <PaginationContent>
+            <PaginationItem>
+              <PaginationPrevious
+                href="#"
+                onClick={(e) => { e.preventDefault(); setCurrentPage((p) => Math.max(1, p - 1)); }}
+                className={currentPage === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
+              />
+            </PaginationItem>
+            <PaginationItem>
+              <span className="text-sm text-muted-foreground mx-4">
+                Page {currentPage} sur {totalPages}
+              </span>
+            </PaginationItem>
+            <PaginationItem>
+              <PaginationNext
+                href="#"
+                onClick={(e) => { e.preventDefault(); setCurrentPage((p) => Math.min(totalPages, p + 1)); }}
+                className={currentPage === totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
+              />
+            </PaginationItem>
+          </PaginationContent>
+        </Pagination>
+      )}
 
       <Dialog open={!!opened} onOpenChange={(v) => !v && setOpened(null)}>
         <DialogContent>

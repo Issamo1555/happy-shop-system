@@ -30,8 +30,16 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { CATEGORY_LABELS, formatDhs } from "@/lib/format";
-import { Plus, Pencil, Save, X, Package, Trash2 } from "lucide-react";
+import { Plus, Pencil, Save, X, Package, Trash2, Search } from "lucide-react";
 import { toast } from "sonner";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
 
 export const Route = createFileRoute("/_app/catalogue")({
   component: CataloguePage,
@@ -51,6 +59,7 @@ interface Product {
 function CataloguePage() {
   const { user } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
+  const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<Product>>({});
@@ -64,11 +73,15 @@ function CataloguePage() {
     sort_order: 0,
   });
 
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+
   const fetchProducts = async () => {
     setLoading(true);
     try {
       const data = await getProductsAction();
       setProducts(data as Product[]);
+      setCurrentPage(1); // Reset to first page on load
     } catch (err) {
       toast.error("Erreur lors du chargement des produits");
     }
@@ -138,6 +151,18 @@ function CataloguePage() {
     setEditingId(product.id);
     setEditForm(product);
   };
+  
+  const filteredProducts = products.filter(p => {
+    const searchTerm = search.toLowerCase();
+    const categoryLabel = CATEGORY_LABELS[p.category as keyof typeof CATEGORY_LABELS] || p.category;
+    return (
+      p.name.toLowerCase().includes(searchTerm) ||
+      categoryLabel.toLowerCase().includes(searchTerm)
+    );
+  });
+  
+  const totalPages = Math.ceil(filteredProducts.length / itemsPerPage);
+  const paginatedProducts = filteredProducts.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   return (
     <div className="space-y-6">
@@ -150,7 +175,18 @@ function CataloguePage() {
           <p className="text-muted-foreground">Gérez vos produits et tarifs</p>
         </div>
 
-        <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input 
+              placeholder="Rechercher un produit..." 
+              value={search} 
+              onChange={(e) => { setSearch(e.target.value); setCurrentPage(1); }} 
+              className="pl-9 w-64" 
+            />
+          </div>
+
+          <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
           <DialogTrigger asChild>
             <Button className="gap-2">
               <Plus className="w-4 h-4" /> Nouveau produit
@@ -229,6 +265,7 @@ function CataloguePage() {
             </div>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       <div className="pos-card overflow-hidden">
@@ -249,14 +286,14 @@ function CataloguePage() {
                   Chargement...
                 </TableCell>
               </TableRow>
-            ) : products.length === 0 ? (
+            ) : paginatedProducts.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
                   Aucun produit trouvé
                 </TableCell>
               </TableRow>
             ) : (
-              products.map((product) => (
+              paginatedProducts.map((product) => (
                 <TableRow key={product.id}>
                   <TableCell>
                     {editingId === product.id ? (
@@ -360,6 +397,32 @@ function CataloguePage() {
           </TableBody>
         </Table>
       </div>
+
+      {totalPages > 1 && (
+        <Pagination>
+          <PaginationContent>
+            <PaginationItem>
+              <PaginationPrevious
+                href="#"
+                onClick={(e) => { e.preventDefault(); setCurrentPage((p) => Math.max(1, p - 1)); }}
+                className={currentPage === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
+              />
+            </PaginationItem>
+            <PaginationItem>
+              <span className="text-sm text-muted-foreground mx-4">
+                Page {currentPage} sur {totalPages}
+              </span>
+            </PaginationItem>
+            <PaginationItem>
+              <PaginationNext
+                href="#"
+                onClick={(e) => { e.preventDefault(); setCurrentPage((p) => Math.min(totalPages, p + 1)); }}
+                className={currentPage === totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
+              />
+            </PaginationItem>
+          </PaginationContent>
+        </Pagination>
+      )}
     </div>
   );
 }
