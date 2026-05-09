@@ -10,16 +10,16 @@ import bcrypt from "bcryptjs";
 // ============================================
 
 // Verify user is authenticated and return their real role from DB
-const checkAuth = (userId: string | undefined) => {
+const checkAuth = async (userId: string | undefined) => {
   if (!userId) throw new Error("Non authentifié");
-  const user = db.prepare("SELECT id, role FROM users WHERE id = ?").get(userId) as any;
+  const user = await db.prepare("SELECT id, role FROM users WHERE id = ?").get(userId) as any;
   if (!user) throw new Error("Utilisateur introuvable");
   return user;
 };
 
 // Verify user is admin (uses DB, not client-side role)
-const checkAdmin = (userId: string | undefined) => {
-  const user = checkAuth(userId);
+const checkAdmin = async (userId: string | undefined) => {
+  const user = await checkAuth(userId);
   if (user.role !== "admin") throw new Error("Accès refusé : Droits administrateur requis");
   return user;
 };
@@ -69,26 +69,26 @@ const ALLOWED_TABLES = ["products", "clients", "appointments", "sales", "sale_it
 // ============================================
 export const getProductsAction = createServerFn({ method: "GET" })
   .handler(async () => {
-    return db.prepare("SELECT * FROM products WHERE deleted = 0 ORDER BY category ASC, sort_order ASC").all();
+    return await db.prepare("SELECT * FROM products WHERE deleted = 0 ORDER BY category ASC, sort_order ASC").all();
   });
 
 export const createProductAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: any }) => {
-    checkAdmin(data.adminId);
+    await checkAdmin(data.adminId);
     const id = data.id || crypto.randomUUID();
     const stmt = db.prepare(`
       INSERT INTO products (id, name, category, type, price, active, sort_order)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
-    stmt.run(id, data.name, data.category, data.type, data.price, data.active ? 1 : 0, data.sort_order);
+    await stmt.run(id, data.name, data.category, data.type, data.price, data.active ? 1 : 0, data.sort_order);
     return { success: true, id };
   });
 
 export const updateProductAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: any }) => {
-    checkAdmin(data.adminId);
+    await checkAdmin(data.adminId);
     const { id, name, category, type, price, active, sort_order } = data;
-    db.prepare(`
+    await db.prepare(`
       UPDATE products 
       SET name = ?, category = ?, type = ?, price = ?, active = ?, sort_order = ?
       WHERE id = ?
@@ -98,15 +98,15 @@ export const updateProductAction = createServerFn({ method: "POST" })
 
 export const toggleProductActiveAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: { id: string, active: boolean, adminId: string } }) => {
-    checkAdmin(data.adminId);
-    db.prepare("UPDATE products SET active = ? WHERE id = ?").run(data.active ? 1 : 0, data.id);
+    await checkAdmin(data.adminId);
+    await db.prepare("UPDATE products SET active = ? WHERE id = ?").run(data.active ? 1 : 0, data.id);
     return { success: true };
   });
 
 export const deleteProductAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: { id: string, adminId: string } }) => {
-    checkAdmin(data.adminId);
-    db.prepare("UPDATE products SET deleted = 1 WHERE id = ?").run(data.id);
+    await checkAdmin(data.adminId);
+    await db.prepare("UPDATE products SET deleted = 1 WHERE id = ?").run(data.id);
     return { success: true };
   });
 
@@ -115,26 +115,26 @@ export const deleteProductAction = createServerFn({ method: "POST" })
 // ============================================
 export const getClientsAction = createServerFn({ method: "GET" })
   .handler(async () => {
-    return db.prepare("SELECT * FROM clients WHERE deleted = 0 ORDER BY last_name ASC").all();
+    return await db.prepare("SELECT * FROM clients WHERE deleted = 0 ORDER BY last_name ASC").all();
   });
 
 export const createClientAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: any }) => {
-    checkAuth(data.userId);
+    await checkAuth(data.userId);
     const id = crypto.randomUUID();
     const stmt = db.prepare(`
       INSERT INTO clients (id, first_name, last_name, phone, email, is_member, children_count, notes)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    stmt.run(id, data.first_name, data.last_name, data.phone, data.email, data.is_member ? 1 : 0, data.children_count, data.notes);
+    await stmt.run(id, data.first_name, data.last_name, data.phone, data.email, data.is_member ? 1 : 0, data.children_count, data.notes);
     return { success: true, id };
   });
 
 export const updateClientAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: any }) => {
-    checkAuth(data.userId);
+    await checkAuth(data.userId);
     const { id, first_name, last_name, phone, email, is_member, children_count, notes } = data;
-    db.prepare(`
+    await db.prepare(`
       UPDATE clients 
       SET first_name = ?, last_name = ?, phone = ?, email = ?, is_member = ?, children_count = ?, notes = ?
       WHERE id = ?
@@ -144,14 +144,14 @@ export const updateClientAction = createServerFn({ method: "POST" })
 
 export const deleteClientAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: { id: string, adminId: string } }) => {
-    checkAdmin(data.adminId);
-    db.prepare("UPDATE clients SET deleted = 1 WHERE id = ?").run(data.id);
+    await checkAdmin(data.adminId);
+    await db.prepare("UPDATE clients SET deleted = 1 WHERE id = ?").run(data.id);
     return { success: true };
   });
 
 export const getClientPacksAction = createServerFn({ method: "GET" })
   .handler(async ({ data }: { data: string }) => {
-    return db.prepare(`
+    return await db.prepare(`
       SELECT cp.*, p.name as product_name
       FROM client_packs cp
       LEFT JOIN products p ON cp.product_id = p.id
@@ -162,8 +162,8 @@ export const getClientPacksAction = createServerFn({ method: "GET" })
 
 export const consumePackSessionAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: { packId: string, userId: string } }) => {
-    checkAuth(data.userId);
-    db.prepare("UPDATE client_packs SET sessions_remaining = sessions_remaining - 1 WHERE id = ? AND sessions_remaining > 0")
+    await checkAuth(data.userId);
+    await db.prepare("UPDATE client_packs SET sessions_remaining = sessions_remaining - 1 WHERE id = ? AND sessions_remaining > 0")
       .run(data.packId);
     return { success: true };
   });
@@ -173,26 +173,26 @@ export const consumePackSessionAction = createServerFn({ method: "POST" })
 // ============================================
 export const getAppointmentsAction = createServerFn({ method: "GET" })
   .handler(async ({ data }: { data: string }) => {
-    return db.prepare("SELECT * FROM appointments WHERE date(starts_at) = ? ORDER BY starts_at")
+    return await db.prepare("SELECT * FROM appointments WHERE date(starts_at) = ? ORDER BY starts_at")
       .all(data);
   });
 
 export const createAppointmentAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: any }) => {
-    checkAuth(data.created_by);
+    await checkAuth(data.created_by);
     const id = crypto.randomUUID();
     const stmt = db.prepare(`
       INSERT INTO appointments (id, client_id, client_name, product_id, service_name, starts_at, duration_min, notes, created_by)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    stmt.run(id, data.client_id, data.client_name, data.product_id, data.service_name, data.starts_at, data.duration_min, data.notes, data.created_by);
+    await stmt.run(id, data.client_id, data.client_name, data.product_id, data.service_name, data.starts_at, data.duration_min, data.notes, data.created_by);
     return { success: true, id };
   });
 
 export const updateAppointmentStatusAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: { id: string, status: string, userId: string } }) => {
-    checkAuth(data.userId);
-    db.prepare("UPDATE appointments SET status = ? WHERE id = ?").run(data.status, data.id);
+    await checkAuth(data.userId);
+    await db.prepare("UPDATE appointments SET status = ? WHERE id = ?").run(data.status, data.id);
     return { success: true };
   });
 
@@ -201,12 +201,12 @@ export const updateAppointmentStatusAction = createServerFn({ method: "POST" })
 // ============================================
 export const saveSaleAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: any }) => {
-    checkAuth(data.sale.cashier_id);
+    await checkAuth(data.sale.cashier_id);
     const { sale, items } = data;
     const saleId = sale.id || crypto.randomUUID();
     
-    const transaction = db.transaction(() => {
-      db.prepare(`
+    const transaction = db.transaction(async () => {
+      await db.prepare(`
         INSERT INTO sales (id, cashier_id, client_id, subtotal, discount, discount_reason, total, payment_method, note)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(saleId, sale.cashier_id, sale.client_id, sale.subtotal, sale.discount, sale.discount_reason, sale.total, sale.payment_method, sale.note);
@@ -217,16 +217,16 @@ export const saveSaleAction = createServerFn({ method: "POST" })
       `);
       for (const item of items) {
         const itemId = item.id || crypto.randomUUID();
-        itemStmt.run(itemId, saleId, item.product_id, item.product_name, item.unit_price, item.quantity, item.line_total);
+        await itemStmt.run(itemId, saleId, item.product_id, item.product_name, item.unit_price, item.quantity, item.line_total);
       }
     });
-    transaction();
+    await transaction();
     return { success: true, id: saleId };
   });
 
 export const getSalesAction = createServerFn({ method: "GET" })
   .handler(async ({ data }: { data: string }) => {
-    return db.prepare(`
+    return await db.prepare(`
       SELECT s.*, c.first_name, c.last_name 
       FROM sales s 
       LEFT JOIN clients c ON s.client_id = c.id 
@@ -237,7 +237,7 @@ export const getSalesAction = createServerFn({ method: "GET" })
 
 export const getSaleItemsAction = createServerFn({ method: "GET" })
   .handler(async ({ data }: { data: string }) => {
-    return db.prepare("SELECT * FROM sale_items WHERE sale_id = ?").all(data);
+    return await db.prepare("SELECT * FROM sale_items WHERE sale_id = ?").all(data);
   });
 
 // ============================================
@@ -245,7 +245,7 @@ export const getSaleItemsAction = createServerFn({ method: "GET" })
 // ============================================
 export const downloadDatabaseAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: { adminId: string } }) => {
-    checkAdmin(data.adminId);
+    await checkAdmin(data.adminId);
     const dbPath = join(process.cwd(), "pos.db");
     const buffer = readFileSync(dbPath);
     return {
@@ -256,30 +256,31 @@ export const downloadDatabaseAction = createServerFn({ method: "POST" })
 
 export const getTablesAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: { adminId: string } }) => {
-    checkAdmin(data.adminId);
-    return db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all();
+    await checkAdmin(data.adminId);
+    const tables = await db.getTables();
+    return tables.map(name => ({ name })); // Wrap in object to match previous return format
   });
 
 export const getTableDataAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: { tableName: string, adminId: string } }) => {
-    checkAdmin(data.adminId);
+    await checkAdmin(data.adminId);
     // FIX: SQL injection protection - whitelist table names
     if (!ALLOWED_TABLES.includes(data.tableName)) {
       throw new Error(`Table "${data.tableName}" non autorisée`);
     }
-    return db.prepare(`SELECT * FROM ${data.tableName} LIMIT 100`).all();
+    return await db.prepare(`SELECT * FROM ${data.tableName} LIMIT 100`).all();
   });
 
 export const importFromSupabaseAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: { products: any[], clients: any[] } }) => {
-    const transaction = db.transaction(() => {
+    const transaction = db.transaction(async () => {
       if (data.products.length > 0) {
         const stmt = db.prepare(`
           INSERT OR REPLACE INTO products (id, name, category, type, price, active, sort_order)
           VALUES (?, ?, ?, ?, ?, ?, ?)
         `);
         for (const p of data.products) {
-          stmt.run(p.id, p.name, p.category, p.type, p.price, p.active ? 1 : 0, p.sort_order);
+          await stmt.run(p.id, p.name, p.category, p.type, p.price, p.active ? 1 : 0, p.sort_order);
         }
       }
       if (data.clients.length > 0) {
@@ -288,11 +289,11 @@ export const importFromSupabaseAction = createServerFn({ method: "POST" })
           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `);
         for (const c of data.clients) {
-          stmt.run(c.id, c.first_name, c.last_name, c.phone, c.email, c.is_member ? 1 : 0, c.children_count, c.notes);
+          await stmt.run(c.id, c.first_name, c.last_name, c.phone, c.email, c.is_member ? 1 : 0, c.children_count, c.notes);
         }
       }
     });
-    transaction();
+    await transaction();
     return { success: true };
   });
 
@@ -306,7 +307,7 @@ export const loginAction = createServerFn({ method: "POST" })
     // Rate limiting check
     checkRateLimit(email);
     
-    const user = db.prepare("SELECT * FROM users WHERE email = ?").get(email) as any;
+    const user = await db.prepare("SELECT * FROM users WHERE email = ?").get(email) as any;
     if (!user) {
       recordFailedLogin(email);
       throw new Error("Email ou mot de passe incorrect");
@@ -335,7 +336,7 @@ export const signUpAction = createServerFn({ method: "POST" })
     }
     
     // Check if email already exists
-    const existing = db.prepare("SELECT id FROM users WHERE email = ?").get(email) as any;
+    const existing = await db.prepare("SELECT id FROM users WHERE email = ?").get(email) as any;
     if (existing) {
       throw new Error("Cet email est déjà utilisé");
     }
@@ -345,7 +346,7 @@ export const signUpAction = createServerFn({ method: "POST" })
     
     const id = crypto.randomUUID();
     const role = "cashier";
-    db.prepare(`
+    await db.prepare(`
       INSERT INTO users (id, email, password, full_name, role)
       VALUES (?, ?, ?, ?, ?)
     `).run(id, email, hashedPassword, fullName, role);
@@ -355,7 +356,7 @@ export const signUpAction = createServerFn({ method: "POST" })
 // Server-side session validation
 export const validateSessionAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: { userId: string } }) => {
-    const user = db.prepare("SELECT id, email, full_name, role, created_at FROM users WHERE id = ?").get(data.userId) as any;
+    const user = await db.prepare("SELECT id, email, full_name, role, created_at FROM users WHERE id = ?").get(data.userId) as any;
     if (!user) return null;
     return user;
   });
