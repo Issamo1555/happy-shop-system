@@ -4,7 +4,7 @@ import { join } from "path";
 import bcrypt from "bcryptjs";
 
 // Database Configuration
-const isMySQL = Boolean(process.env.MYSQL_HOST);
+const isMySQL = false; // Force SQLite as per user request
 
 let sqliteDb: any = null;
 let mysqlPool: mysql.Pool | null = null;
@@ -71,14 +71,15 @@ export const db = {
   },
 
   // Transaction support
-  transaction(callback: () => any) {
+  transaction(callback: (...args: any[]) => any) {
     if (isMySQL && mysqlPool) {
-      return async () => {
+      return async (...args: any[]) => {
         const connection = await mysqlPool.getConnection();
         try {
           await connection.beginTransaction();
-          await callback();
+          const result = await callback(...args);
           await connection.commit();
+          return result;
         } catch (err) {
           await connection.rollback();
           throw err;
@@ -87,7 +88,19 @@ export const db = {
         }
       };
     } else {
-      return sqliteDb.transaction(callback);
+      // For SQLite, better-sqlite3's transaction is synchronous.
+      // To support async callbacks, we need to handle BEGIN/COMMIT manually.
+      return async (...args: any[]) => {
+        sqliteDb.prepare("BEGIN").run();
+        try {
+          const result = await callback(...args);
+          sqliteDb.prepare("COMMIT").run();
+          return result;
+        } catch (err) {
+          sqliteDb.prepare("ROLLBACK").run();
+          throw err;
+        }
+      };
     }
   },
 
