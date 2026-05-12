@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { getAppointmentsAction, getAppointmentsRangeAction, getProductsAction, getClientsAction, updateAppointmentStatusAction, createAppointmentAction, syncFromGoogleAction } from "@/lib/actions";
+import { getAppointmentsAction, getAppointmentsRangeAction, getProductsAction, getClientsAction, updateAppointmentStatusAction, createAppointmentAction, syncFromGoogleAction, updateAppointmentAction } from "@/lib/actions";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -54,6 +54,7 @@ function AgendaPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [open, setOpen] = useState(false);
+  const [editAppt, setEditAppt] = useState<Appt | null>(null);
   const [syncing, setSyncing] = useState(false);
 
   const syncFromGoogle = async () => {
@@ -155,18 +156,25 @@ function AgendaPage() {
           </DialogTrigger>
           <ApptDialog products={products} clients={clients} defaultDay={day} userId={user?.id} onSaved={() => { setOpen(false); load(); }} />
         </Dialog>
+
+        {/* Edit Dialog */}
+        <Dialog open={!!editAppt} onOpenChange={(v) => { if (!v) setEditAppt(null); }}>
+          {editAppt && (
+            <EditApptDialog appt={editAppt} products={products} userId={user?.id} onSaved={async () => { await load(); setEditAppt(null); }} />
+          )}
+        </Dialog>
       </div>
 
       {/* Views */}
-      {view === "day" && <DayView appts={appts} onStatus={setStatus} />}
-      {view === "week" && <WeekView appts={appts} day={day} onStatus={setStatus} onDayClick={(d) => { setDay(d); setView("day"); }} />}
+      {view === "day" && <DayView appts={appts} onStatus={setStatus} onEdit={setEditAppt} />}
+      {view === "week" && <WeekView appts={appts} day={day} onStatus={setStatus} onDayClick={(d) => { setDay(d); setView("day"); }} onEdit={setEditAppt} />}
       {view === "month" && <MonthView appts={appts} day={day} onDayClick={(d) => { setDay(d); setView("day"); }} />}
     </div>
   );
 }
 
 /* ============================== DAY VIEW ============================== */
-function DayView({ appts, onStatus }: { appts: Appt[]; onStatus: (id: string, s: Appt["status"]) => void }) {
+function DayView({ appts, onStatus, onEdit }: { appts: Appt[]; onStatus: (id: string, s: Appt["status"]) => void; onEdit: (a: Appt) => void }) {
   if (appts.length === 0) {
     return (
       <div className="pos-card p-12 text-center text-muted-foreground">
@@ -177,13 +185,13 @@ function DayView({ appts, onStatus }: { appts: Appt[]; onStatus: (id: string, s:
   }
   return (
     <div className="space-y-2">
-      {appts.map((a) => <ApptRow key={a.id} appt={a} onStatus={onStatus} />)}
+      {appts.map((a) => <ApptRow key={a.id} appt={a} onStatus={onStatus} onEdit={onEdit} />)}
     </div>
   );
 }
 
 /* ============================== WEEK VIEW ============================== */
-function WeekView({ appts, day, onStatus, onDayClick }: { appts: Appt[]; day: Date; onStatus: (id: string, s: Appt["status"]) => void; onDayClick: (d: Date) => void }) {
+function WeekView({ appts, day, onStatus, onDayClick, onEdit }: { appts: Appt[]; day: Date; onStatus: (id: string, s: Appt["status"]) => void; onDayClick: (d: Date) => void; onEdit: (a: Appt) => void }) {
   const weekStart = startOfWeek(day, { weekStartsOn: 1 });
   const days = eachDayOfInterval({ start: weekStart, end: endOfWeek(day, { weekStartsOn: 1 }) });
 
@@ -215,7 +223,7 @@ function WeekView({ appts, day, onStatus, onDayClick }: { appts: Appt[]; day: Da
             </button>
             <div className="flex-1 space-y-1 overflow-y-auto" style={{ maxHeight: "50vh" }}>
               {dayAppts.map(a => (
-                <WeekApptCard key={a.id} appt={a} onStatus={onStatus} />
+                <WeekApptCard key={a.id} appt={a} onEdit={onEdit} />
               ))}
             </div>
           </div>
@@ -225,13 +233,12 @@ function WeekView({ appts, day, onStatus, onDayClick }: { appts: Appt[]; day: Da
   );
 }
 
-function WeekApptCard({ appt, onStatus }: { appt: Appt; onStatus: (id: string, s: Appt["status"]) => void }) {
+function WeekApptCard({ appt, onEdit }: { appt: Appt; onEdit: (a: Appt) => void }) {
   const start = parseISO(appt.starts_at);
   return (
-    <div className={`rounded-md p-1.5 text-[11px] border cursor-default transition-all hover:shadow-md ${statusColor[appt.status]}`}>
+    <div onClick={() => onEdit(appt)} className={`rounded-md p-1.5 text-[11px] border cursor-pointer transition-all hover:shadow-md ${statusColor[appt.status]}`}>
       <p className="font-semibold truncate">{format(start, "HH:mm")} {appt.client_name}</p>
       <p className="truncate opacity-80">{appt.service_name}</p>
-      {appt.google_event_id && <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-500 mt-0.5" title="Synchro Google" />}
     </div>
   );
 }
@@ -294,26 +301,28 @@ function MonthView({ appts, day, onDayClick }: { appts: Appt[]; day: Date; onDay
 }
 
 /* ============================== APPOINTMENT ROW (Day View) ============================== */
-function ApptRow({ appt, onStatus }: { appt: Appt; onStatus: (id: string, s: Appt["status"]) => void }) {
+function ApptRow({ appt, onStatus, onEdit }: { appt: Appt; onStatus: (id: string, s: Appt["status"]) => void; onEdit: (a: Appt) => void }) {
   const start = parseISO(appt.starts_at);
   return (
     <div className="pos-card p-4 flex items-center gap-4">
-      <div className="text-center min-w-[64px]">
-        <p className="font-display text-2xl text-primary leading-none">{format(start, "HH:mm")}</p>
-        <p className="text-[10px] uppercase tracking-wider text-muted-foreground mt-1 flex items-center justify-center gap-1">
-          <Clock className="w-3 h-3" />{appt.duration_min}min
-        </p>
-      </div>
-      <div className="flex-1">
-        <p className="font-medium">{appt.client_name}</p>
-        <p className="text-sm text-muted-foreground">{appt.service_name}</p>
-        {appt.notes && <p className="text-xs text-muted-foreground mt-1 italic">{appt.notes}</p>}
-        {appt.google_event_id && (
-          <p className="text-[10px] text-sage flex items-center gap-1 mt-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-sage" />
-            Synchronisé avec Google Calendar
+      <div className="flex-1 flex items-center gap-4 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => onEdit(appt)}>
+        <div className="text-center min-w-[64px]">
+          <p className="font-display text-2xl text-primary leading-none">{format(start, "HH:mm")}</p>
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground mt-1 flex items-center justify-center gap-1">
+            <Clock className="w-3 h-3" />{appt.duration_min}min
           </p>
-        )}
+        </div>
+        <div className="flex-1">
+          <p className="font-medium">{appt.client_name}</p>
+          <p className="text-sm text-muted-foreground">{appt.service_name}</p>
+          {appt.notes && <p className="text-xs text-muted-foreground mt-1 italic">{appt.notes}</p>}
+          {appt.google_event_id && (
+            <p className="text-[10px] text-sage flex items-center gap-1 mt-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-sage" />
+              Synchronisé avec Google Calendar
+            </p>
+          )}
+        </div>
       </div>
       <Badge className={statusColor[appt.status]}>{labels[appt.status]}</Badge>
       <Select value={appt.status} onValueChange={(v) => onStatus(appt.id, v as Appt["status"])}>
@@ -416,6 +425,63 @@ function ApptDialog({ products, clients, defaultDay, userId, onSaved }: {
         </div>
         <div><Label>Notes</Label><Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} /></div>
         <DialogFooter><Button type="submit">Créer le RDV</Button></DialogFooter>
+      </form>
+    </DialogContent>
+  );
+}
+
+/* ============================== EDIT APPOINTMENT DIALOG ============================== */
+function EditApptDialog({ appt, products, userId, onSaved }: {
+  appt: Appt; products: Product[]; userId?: string; onSaved: () => void;
+}) {
+  const [clientName, setClientName] = useState(appt.client_name);
+  const [serviceName, setServiceName] = useState(appt.service_name);
+  const startDate = parseISO(appt.starts_at);
+  const [date, setDate] = useState(format(startDate, "yyyy-MM-dd"));
+  const [time, setTime] = useState(format(startDate, "HH:mm"));
+  const [duration, setDuration] = useState(appt.duration_min);
+  const [notes, setNotes] = useState(appt.notes || "");
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!clientName) { toast.error("Nom du client requis"); return; }
+    const startsAt = new Date(`${date}T${time}:00`).toISOString();
+    try {
+      await updateAppointmentAction({
+        data: {
+          id: appt.id,
+          client_name: clientName,
+          service_name: serviceName,
+          starts_at: startsAt,
+          duration_min: duration,
+          notes: notes || null,
+        }
+      });
+      toast.success("Rendez-vous modifié");
+      onSaved();
+    } catch (err: any) {
+      toast.error("Erreur: " + (err?.message || "Impossible de modifier"));
+    }
+  };
+
+  return (
+    <DialogContent>
+      <DialogHeader>
+        <DialogTitle className="font-display text-2xl text-primary">Modifier le rendez-vous</DialogTitle>
+      </DialogHeader>
+      <form onSubmit={submit} className="space-y-3">
+        <div><Label>Client</Label><Input value={clientName} onChange={(e) => setClientName(e.target.value)} required /></div>
+        <div>
+          <Label>Prestation</Label>
+          <Input value={serviceName} onChange={(e) => setServiceName(e.target.value)} required />
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          <div><Label>Date</Label><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} required /></div>
+          <div><Label>Heure</Label><Input type="time" value={time} onChange={(e) => setTime(e.target.value)} required /></div>
+          <div><Label>Durée (min)</Label><Input type="number" min={15} step={15} value={duration} onChange={(e) => setDuration(Number(e.target.value) || 60)} /></div>
+        </div>
+        <div><Label>Notes</Label><Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} /></div>
+        <DialogFooter><Button type="submit">Enregistrer</Button></DialogFooter>
       </form>
     </DialogContent>
   );

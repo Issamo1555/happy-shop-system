@@ -248,6 +248,33 @@ export const syncFromGoogleAction = createServerFn({ method: "POST" })
     return { success: true, imported, total: events.length };
   });
 
+export const updateAppointmentAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: any }) => {
+// await checkAuth(data.userId);
+    const appt = await db.prepare("SELECT * FROM appointments WHERE id = ?").get(data.id) as any;
+    if (!appt) throw new Error("Rendez-vous introuvable");
+
+    await db.prepare(`
+      UPDATE appointments SET client_name = ?, service_name = ?, starts_at = ?, duration_min = ?, notes = ?
+      WHERE id = ?
+    `).run(data.client_name, data.service_name, data.starts_at, data.duration_min, data.notes, data.id);
+
+    // Sync update to Google Calendar
+    if (appt.google_event_id) {
+      await syncEventToGoogle({
+        id: data.id,
+        client_name: data.client_name,
+        service_name: data.service_name,
+        starts_at: data.starts_at,
+        duration_min: data.duration_min,
+        notes: data.notes,
+        google_event_id: appt.google_event_id,
+      });
+    }
+
+    return { success: true };
+  });
+
 // ============================================
 // SALES (now requires authentication)
 // ============================================
