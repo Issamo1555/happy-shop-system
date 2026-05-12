@@ -4,6 +4,7 @@ import { readFileSync } from "fs";
 import { join } from "path";
 import { supabase } from "@/integrations/supabase/client";
 import bcrypt from "bcryptjs";
+import { syncEventToGoogle, deleteEventFromGoogle, pullEventsFromGoogle } from "./google-calendar.server";
 
 // ============================================
 // SECURITY UTILITIES
@@ -177,23 +178,74 @@ export const getAppointmentsAction = createServerFn({ method: "GET" })
       .all(data);
   });
 
+export const getAppointmentsRangeAction = createServerFn({ method: "GET" })
+  .handler(async ({ data }: { data: { from: string; to: string } }) => {
+    return await db.prepare("SELECT * FROM appointments WHERE date(starts_at) >= ? AND date(starts_at) <= ? ORDER BY starts_at")
+      .all(data.from, data.to);
+  });
+
 export const createAppointmentAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: any }) => {
     await checkAuth(data.created_by);
     const id = crypto.randomUUID();
+    const startsAt = data.starts_at;
     const stmt = db.prepare(`
-      INSERT INTO appointments (id, client_id, client_name, product_id, service_name, starts_at, duration_min, notes, created_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO appointments (id, client_id, client_name, product_id, service_name, starts_at, duration_min, notes, created_by, google_event_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    await stmt.run(id, data.client_id, data.client_name, data.product_id, data.service_name, data.starts_at, data.duration_min, data.notes, data.created_by);
-    return { success: true, id };
+    
+    // Sync to Google Calendar
+    const googleEventId = await syncEventToGoogle({
+      id,
+      client_name: data.client_name,
+      service_name: data.service_name,
+      starts_at: startsAt,
+      duration_min: data.duration_min,
+      notes: data.notes
+    });
+
+    await stmt.run(id, data.client_id, data.client_name, data.product_id, data.service_name, startsAt, data.duration_min, data.notes, data.created_by, googleEventId);
+    return { success: true, id, googleEventId };
   });
 
 export const updateAppointmentStatusAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: { id: string, status: string, userId: string } }) => {
     await checkAuth(data.userId);
+    
+    const appt = await db.prepare("SELECT * FROM appointments WHERE id = ?").get(data.id) as any;
+    if (!appt) throw new Error("Rendez-vous introuvable");
+
     await db.prepare("UPDATE appointments SET status = ? WHERE id = ?").run(data.status, data.id);
+    
+    // If cancelled or no-show, remove from Google Calendar
+    if ((data.status === "cancelled" || data.status === "no_show") && appt.google_event_id) {
+      await deleteEventFromGoogle(appt.google_event_id);
+      await db.prepare("UPDATE appointments SET google_event_id = NULL WHERE id = ?").run(data.id);
+    } 
+    // If it was cancelled and now re-scheduled, we could re-sync, but for now we'll just handle deletion
+    
     return { success: true };
+  });
+
+export const syncFromGoogleAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: { from: string; to: string } }) => {
+    const events = await pullEventsFromGoogle(data.from, data.to);
+    let imported = 0;
+    for (const evt of events) {
+      const existing = await db.prepare("SELECT id FROM appointments WHERE google_event_id = ?").get(evt.google_event_id) as any;
+      if (!existing) {
+        const id = crypto.randomUUID();
+        const startDate = new Date(evt.starts_at);
+        const endDate = new Date(evt.ends_at);
+        const durationMin = Math.round((endDate.getTime() - startDate.getTime()) / 60000) || 60;
+        await db.prepare(`
+          INSERT INTO appointments (id, client_name, service_name, starts_at, duration_min, notes, google_event_id, status)
+          VALUES (?, ?, ?, ?, ?, ?, ?, 'scheduled')
+        `).run(id, evt.summary, evt.summary, evt.starts_at, durationMin, evt.description, evt.google_event_id);
+        imported++;
+      }
+    }
+    return { success: true, imported, total: events.length };
   });
 
 // ============================================

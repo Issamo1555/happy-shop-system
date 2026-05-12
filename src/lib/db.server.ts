@@ -156,6 +156,7 @@ export const initServerDb = async () => {
       status VARCHAR(20) NOT NULL DEFAULT 'scheduled',
       notes TEXT,
       created_by VARCHAR(50),
+      google_event_id VARCHAR(255),
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
     )`,
     `CREATE TABLE IF NOT EXISTS sales (
@@ -261,6 +262,7 @@ export const initServerDb = async () => {
         status TEXT NOT NULL DEFAULT 'scheduled',
         notes TEXT,
         created_by TEXT,
+        google_event_id TEXT,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
       CREATE TABLE IF NOT EXISTS sales (
