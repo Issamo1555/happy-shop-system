@@ -2,7 +2,6 @@ import { createServerFn } from "@tanstack/react-start";
 import { db } from "./db.server";
 import { readFileSync, writeFileSync } from "fs";
 import { join } from "path";
-import { supabase } from "@/integrations/supabase/client";
 import bcrypt from "bcryptjs";
 import { syncEventToGoogle, deleteEventFromGoogle, pullEventsFromGoogle } from "./google-calendar.server";
 
@@ -505,31 +504,7 @@ export const getTableDataAction = createServerFn({ method: "POST" })
     return await db.prepare(`SELECT * FROM ${data.tableName} LIMIT 100`).all();
   });
 
-export const importFromSupabaseAction = createServerFn({ method: "POST" })
-  .handler(async ({ data }: { data: { products: any[], clients: any[] } }) => {
-    const transaction = db.transaction(async () => {
-      if (data.products.length > 0) {
-        const stmt = db.prepare(`
-          INSERT OR REPLACE INTO products (id, name, category, type, price, active, sort_order)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
-        `);
-        for (const p of data.products) {
-          await stmt.run(p.id, p.name, p.category, p.type, p.price, p.active ? 1 : 0, p.sort_order);
-        }
-      }
-      if (data.clients.length > 0) {
-        const stmt = db.prepare(`
-          INSERT OR REPLACE INTO clients (id, first_name, last_name, phone, email, is_member, children_count, notes)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        `);
-        for (const c of data.clients) {
-          await stmt.run(c.id, c.first_name, c.last_name, c.phone, c.email, c.is_member ? 1 : 0, c.children_count, c.notes);
-        }
-      }
-    });
-    await transaction();
-    return { success: true };
-  });
+
 
 // ============================================
 // AUTH (with bcrypt + rate limiting)
