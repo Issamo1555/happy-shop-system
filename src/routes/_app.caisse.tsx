@@ -493,9 +493,16 @@ function CaissePage() {
                 <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-sans">Parentalité & Co</p>
               </div>
               <div className="mt-4 text-[10px] text-muted-foreground uppercase tracking-wider space-y-0.5">
-                <p>{settings.center_name || "Centre de Bien-être & Accompagnement"}</p>
+                <p className="font-bold text-primary/80">{settings.center_name || "Mums'Home"}</p>
                 <p>{settings.center_address || "Casablanca, Maroc"}</p>
                 <p>Tél: {settings.center_phone || "+212 6 XX XX XX XX"}</p>
+                {(settings.center_ice || settings.center_if || settings.center_rc) && (
+                  <div className="flex flex-wrap justify-center gap-x-3 pt-1 border-t border-border/50 mt-1">
+                    {settings.center_ice && <span>ICE: {settings.center_ice}</span>}
+                    {settings.center_if && <span>IF: {settings.center_if}</span>}
+                    {settings.center_rc && <span>RC: {settings.center_rc}</span>}
+                  </div>
+                )}
               </div>
             </div>
 

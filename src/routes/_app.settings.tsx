@@ -103,22 +103,22 @@ function SettingsPage() {
                     rows={2}
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-4 border-t pt-4">
                   <div className="space-y-2">
-                    <Label className="flex items-center gap-2"><Phone className="w-3 h-3" /> Téléphone</Label>
-                    <Input 
-                      value={settings.center_phone || ""} 
-                      onChange={e => updateKey("center_phone", e.target.value)} 
-                      placeholder="+212..."
-                    />
+                    <Label className="text-[10px] uppercase font-bold text-primary">ICE</Label>
+                    <Input value={settings.center_ice || ""} onChange={e => updateKey("center_ice", e.target.value)} />
                   </div>
                   <div className="space-y-2">
-                    <Label className="flex items-center gap-2"><Mail className="w-3 h-3" /> Email</Label>
-                    <Input 
-                      value={settings.center_email || ""} 
-                      onChange={e => updateKey("center_email", e.target.value)} 
-                      placeholder="contact@..."
-                    />
+                    <Label className="text-[10px] uppercase font-bold text-primary">Identifiant Fiscal (IF)</Label>
+                    <Input value={settings.center_if || ""} onChange={e => updateKey("center_if", e.target.value)} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-[10px] uppercase font-bold text-primary">Registre de Commerce (RC)</Label>
+                    <Input value={settings.center_rc || ""} onChange={e => updateKey("center_rc", e.target.value)} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-[10px] uppercase font-bold text-primary">Patente / CNSS</Label>
+                    <Input value={settings.center_patente || ""} onChange={e => updateKey("center_patente", e.target.value)} />
                   </div>
                 </div>
               </CardContent>

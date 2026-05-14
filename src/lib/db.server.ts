@@ -360,6 +360,11 @@ export const initServerDb = async () => {
     "google_calendar_id": "",
     "google_client_email": "",
     "google_private_key": "",
+    "center_ice": "",
+    "center_if": "",
+    "center_rc": "",
+    "center_patente": "",
+    "tva_percent": "20",
   };
 
   for (const [key, value] of Object.entries(defaults)) {

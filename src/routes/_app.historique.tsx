@@ -37,7 +37,13 @@ interface Sale {
   payment_method: "cash" | "card" | "transfer" | "pack";
   note: string | null;
   payment_image: string | null;
-  clients: { first_name: string; last_name: string | null } | null;
+  clients: { 
+    first_name: string; 
+    last_name: string | null; 
+    client_type?: string; 
+    company_name?: string | null; 
+    company_ice?: string | null 
+  } | null;
 }
 
 interface SaleItem {
@@ -53,7 +59,8 @@ const PAY_LABELS: Record<Sale["payment_method"], string> = {
 };
 
 function HistoryPage() {
-  const [day, setDay] = useState<Date>(startOfDay(new Date()));
+  const [startDate, setStartDate] = useState<Date>(startOfDay(new Date()));
+  const [endDate, setEndDate] = useState<Date>(startOfDay(new Date()));
   const [sales, setSales] = useState<Sale[]>([]);
   const [search, setSearch] = useState("");
   const [opened, setOpened] = useState<Sale | null>(null);
@@ -75,20 +82,29 @@ function HistoryPage() {
   const [maxAmount, setMaxAmount] = useState("");
 
   const load = async () => {
-    const dayStr = format(day, "yyyy-MM-dd");
+    const range = {
+      start: format(startDate, "yyyy-MM-dd"),
+      end: format(endDate, "yyyy-MM-dd")
+    };
     const [salesData, settingsData] = await Promise.all([
-      getSalesAction({ data: dayStr }),
+      getSalesAction({ data: range }),
       getSettingsAction()
     ]);
     const mappedSales = (salesData as any[]).map((r: any) => ({
       ...r,
-      clients: r.first_name ? { first_name: r.first_name, last_name: r.last_name } : null
+      clients: r.first_name ? { 
+        first_name: r.first_name, 
+        last_name: r.last_name,
+        client_type: r.client_type,
+        company_name: r.company_name,
+        company_ice: r.company_ice
+      } : null
     }));
     setSales(mappedSales as Sale[]);
     setSettings(settingsData as Record<string, string>);
-    setCurrentPage(1); // Reset page on date load
+    setCurrentPage(1);
   };
-  useEffect(() => { load(); }, [day]);
+  useEffect(() => { load(); }, [startDate, endDate]);
 
   const openDetail = async (s: Sale) => {
     setOpened(s);
@@ -123,30 +139,43 @@ function HistoryPage() {
 
   const handleExport = () => {
     if (sales.length === 0) return;
-    const headers = ["ID", "Heure", "Client", "Sous-total", "Remise", "Total", "Paiement", "Note"];
+    const tvaRate = Number(settings.tva_percent || 20) / 100;
+    const headers = [
+      "Date", "Heure", "Ticket ID", "Client", "Type", "RS / Entreprise", "ICE", 
+      "Total HT (DHS)", "TVA (DHS)", "Total TTC (DHS)", "Mode Paiement", "Note"
+    ];
+    
     const csvRows = [
-      headers.join(','),
+      headers.join(';'),
       ...sales.map(s => {
+        const ht = s.total / (1 + tvaRate);
+        const tva = s.total - ht;
         const row = [
-          s.id.slice(0, 8),
+          format(new Date(s.created_at), "yyyy-MM-dd"),
           format(new Date(s.created_at), "HH:mm"),
+          s.id.slice(0, 8),
           s.clients ? `${s.clients.first_name} ${s.clients.last_name ?? ""}` : 'Anonyme',
-          s.subtotal,
-          s.discount,
-          s.total,
+          s.clients?.client_type?.toUpperCase() || 'B2C',
+          s.clients?.company_name || "",
+          s.clients?.company_ice || "",
+          ht.toFixed(2).replace('.', ','),
+          tva.toFixed(2).replace('.', ','),
+          s.total.toFixed(2).replace('.', ','),
           PAY_LABELS[s.payment_method],
           s.note || ""
         ];
-        return row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',');
+        return row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(';');
       })
     ];
-    const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    
+    const blob = new Blob(["\uFEFF" + csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', `ventes_${format(day, "yyyy-MM-dd")}.csv`);
+    const fileName = `export_comptable_${format(startDate, "yyyy-MM-dd")}_au_${format(endDate, "yyyy-MM-dd")}.csv`;
+    link.setAttribute('download', fileName);
     link.click();
-    toast.success("Historique exporté");
+    toast.success("Rapport Excel exporté");
   };
 
   const filteredSales = useMemo(() => {
@@ -191,13 +220,16 @@ function HistoryPage() {
           </Button>
         </div>
 
-        <div className="flex items-center gap-1 pos-card p-1">
-          <Button size="icon" variant="ghost" onClick={() => setDay((d) => addDays(d, -1))}><ChevronLeft className="w-4 h-4" /></Button>
-          <span className="px-3 text-sm font-medium min-w-[180px] text-center">
-            {format(day, "EEEE d MMMM yyyy", { locale: fr })}
-          </span>
-          <Button size="icon" variant="ghost" onClick={() => setDay((d) => addDays(d, 1))}><ChevronRight className="w-4 h-4" /></Button>
-          <Button size="sm" variant="ghost" onClick={() => setDay(startOfDay(new Date()))}>Aujourd'hui</Button>
+        <div className="flex items-center gap-3 bg-muted/40 p-2 rounded-lg border border-border/50">
+          <div className="flex items-center gap-2">
+            <label className="text-[10px] uppercase font-bold text-muted-foreground ml-2">Du</label>
+            <Input type="date" value={format(startDate, "yyyy-MM-dd")} onChange={e => setStartDate(new Date(e.target.value))} className="w-40 h-9" />
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-[10px] uppercase font-bold text-muted-foreground">Au</label>
+            <Input type="date" value={format(endDate, "yyyy-MM-dd")} onChange={e => setEndDate(new Date(e.target.value))} className="w-40 h-9" />
+          </div>
+          <Button variant="ghost" size="sm" onClick={() => { setStartDate(startOfDay(new Date())); setEndDate(startOfDay(new Date())); }}>Aujourd'hui</Button>
         </div>
       </div>
 
@@ -431,7 +463,7 @@ function HistoryPage() {
       <ZReportModal 
         open={isZModalOpen} 
         onOpenChange={setIsZModalOpen}
-        day={day}
+        day={endDate}
         sales={sales}
         totals={totals}
         settings={settings}
