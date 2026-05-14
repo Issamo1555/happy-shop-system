@@ -13,7 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CATEGORY_LABELS, CATEGORY_ORDER, formatDhs } from "@/lib/format";
-import { Plus, Minus, Trash2, ShoppingBag, Receipt, Search, Calculator, Banknote } from "lucide-react";
+import { Plus, Minus, Trash2, ShoppingBag, Receipt, Search, Calculator, Banknote, Camera, ImageIcon, X } from "lucide-react";
 import { Numpad } from "@/components/Numpad";
 import { toast } from "sonner";
 
@@ -38,7 +38,7 @@ interface Client {
   children_count: number;
 }
 
-type PaymentMethod = "cash" | "card" | "transfer" | "pack";
+type PaymentMethod = "cash" | "card" | "transfer" | "cheque" | "pack";
 
 function CaissePage() {
   const { user } = useAuth();
@@ -53,6 +53,7 @@ function CaissePage() {
   const [note, setNote] = useState("");
   const [extraDiscount, setExtraDiscount] = useState<number>(0);
   const [settings, setSettings] = useState<Record<string, string>>({});
+  const [paymentImage, setPaymentImage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [cashReceived, setCashReceived] = useState<number>(0);
   const [lastTicket, setLastTicket] = useState<null | {
@@ -155,6 +156,7 @@ function CaissePage() {
           total,
           payment_method: paymentMethod,
           note: note || null,
+          payment_image: paymentImage,
         },
         items: cart.items.map(i => ({
           product_id: i.productId,
@@ -181,6 +183,7 @@ function CaissePage() {
       setExtraDiscount(0);
       setNote("");
       setClientId("");
+      setPaymentImage(null);
       setCashReceived(0);
       toast.success("Vente enregistrée");
     } catch (err: any) {
@@ -334,6 +337,7 @@ function CaissePage() {
                     <SelectItem value="cash">Espèces</SelectItem>
                     <SelectItem value="card">Carte</SelectItem>
                     <SelectItem value="transfer">Virement</SelectItem>
+                    <SelectItem value="cheque">Chèque</SelectItem>
                     <SelectItem value="pack">Pack séance</SelectItem>
                   </SelectContent>
                 </Select>
@@ -397,6 +401,41 @@ function CaissePage() {
                 </div>
               </div>
             )}
+            <div className="space-y-2">
+              <Label className="text-[10px] uppercase text-muted-foreground">Preuve de paiement (ex: Chèque)</Label>
+              <div className="flex gap-2 items-center">
+                <Button 
+                  variant="outline" 
+                  className={`flex-1 h-10 border-dashed ${paymentImage ? "border-sage bg-sage/5 text-sage" : "border-border"}`}
+                  onClick={() => document.getElementById("payment-upload")?.click()}
+                >
+                  {paymentImage ? (
+                    <><ImageIcon className="w-4 h-4 mr-2" /> Image chargée</>
+                  ) : (
+                    <><Camera className="w-4 h-4 mr-2" /> Prendre / Joindre une photo</>
+                  )}
+                </Button>
+                {paymentImage && (
+                  <Button size="icon" variant="ghost" className="h-10 w-10 text-destructive" onClick={() => setPaymentImage(null)}>
+                    <X className="w-4 h-4" />
+                  </Button>
+                )}
+                <input 
+                  id="payment-upload" 
+                  type="file" 
+                  accept="image/*" 
+                  className="hidden" 
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      const reader = new FileReader();
+                      reader.onloadend = () => setPaymentImage(reader.result as string);
+                      reader.readAsDataURL(file);
+                    }
+                  }}
+                />
+              </div>
+            </div>
 
             <Textarea
               placeholder="Note (optionnel)"

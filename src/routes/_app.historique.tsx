@@ -1,10 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { getSalesAction, getSaleItemsAction, getSettingsAction } from "@/lib/actions";
+import { getSalesAction, getSaleItemsAction, getSettingsAction, updateSalePaymentAction } from "@/lib/actions";
+import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { ChevronLeft, ChevronRight, Receipt as ReceiptIcon, FileDown } from "lucide-react";
+import { ChevronLeft, ChevronRight, Receipt as ReceiptIcon, FileDown, Edit2, Camera, ImageIcon, X, Save } from "lucide-react";
 import { addDays, format, startOfDay } from "date-fns";
 import { fr } from "date-fns/locale";
 import { formatDhs } from "@/lib/format";
@@ -35,6 +36,7 @@ interface Sale {
   total: number;
   payment_method: "cash" | "card" | "transfer" | "pack";
   note: string | null;
+  payment_image: string | null;
   clients: { first_name: string; last_name: string | null } | null;
 }
 
@@ -47,7 +49,7 @@ interface SaleItem {
 }
 
 const PAY_LABELS: Record<Sale["payment_method"], string> = {
-  cash: "Espèces", card: "Carte", transfer: "Virement", pack: "Pack",
+  cash: "Espèces", card: "Carte", transfer: "Virement", cheque: "Chèque", pack: "Pack",
 };
 
 function HistoryPage() {
@@ -59,8 +61,14 @@ function HistoryPage() {
   const [isZModalOpen, setIsZModalOpen] = useState(false);
   const [settings, setSettings] = useState<Record<string, string>>({});
 
+  const { user } = useAuth();
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
+
+  const [isEditing, setIsEditing] = useState(false);
+  const [editMethod, setEditMethod] = useState<Sale["payment_method"]>("cash");
+  const [editNote, setEditNote] = useState("");
+  const [editImage, setEditImage] = useState<string | null>(null);
 
   const load = async () => {
     const dayStr = format(day, "yyyy-MM-dd");
@@ -80,8 +88,33 @@ function HistoryPage() {
 
   const openDetail = async (s: Sale) => {
     setOpened(s);
+    setIsEditing(false);
+    setEditMethod(s.payment_method);
+    setEditNote(s.note || "");
+    setEditImage(s.payment_image);
     const data = await getSaleItemsAction({ data: s.id });
     setItems(data as unknown as SaleItem[]);
+  };
+
+  const handleUpdate = async () => {
+    if (!opened) return;
+    try {
+      await updateSalePaymentAction({
+        data: {
+          id: opened.id,
+          payment_method: editMethod,
+          note: editNote || null,
+          payment_image: editImage,
+          userId: user?.id || ""
+        }
+      });
+      toast.success("Vente mise à jour");
+      setIsEditing(false);
+      load();
+      setOpened({ ...opened, payment_method: editMethod, note: editNote, payment_image: editImage });
+    } catch (err: any) {
+      toast.error("Erreur: " + err.message);
+    }
   };
 
   const handleExport = () => {
@@ -232,10 +265,14 @@ function HistoryPage() {
         <DialogContent>
           {opened && (
             <>
-              <DialogHeader>
+              <DialogHeader className="flex flex-row items-center justify-between">
                 <DialogTitle className="font-display text-2xl text-primary">
                   Ticket #{opened.id.slice(0, 8)}
                 </DialogTitle>
+                <Button variant="ghost" size="sm" onClick={() => setIsEditing(!isEditing)} className="gap-2">
+                  <Edit2 className="w-4 h-4" />
+                  {isEditing ? "Annuler" : "Modifier"}
+                </Button>
               </DialogHeader>
               <div className="space-y-3 text-sm">
                 <p className="text-muted-foreground">{format(new Date(opened.created_at), "PPPp", { locale: fr })}</p>
@@ -261,7 +298,75 @@ function HistoryPage() {
                   <div className="flex justify-between font-display text-xl text-primary pt-1">
                     <span>Total</span><span>{formatDhs(Number(opened.total))}</span>
                   </div>
-                  <p className="text-xs text-muted-foreground pt-1">Paiement : {PAY_LABELS[opened.payment_method]}</p>
+                  
+                  {isEditing ? (
+                    <div className="space-y-4 pt-4 border-t mt-4 bg-muted/30 p-4 rounded-lg">
+                      <p className="text-xs font-bold uppercase text-primary">Mode de paiement & Preuve</p>
+                      
+                      <div className="space-y-2">
+                        <label className="text-[10px] uppercase text-muted-foreground">Mode de paiement</label>
+                        <div className="grid grid-cols-2 gap-2">
+                          {(["cash", "card", "transfer", "cheque"] as const).map((m) => (
+                            <Button
+                              key={m}
+                              variant={editMethod === m ? "default" : "outline"}
+                              size="sm"
+                              onClick={() => setEditMethod(m)}
+                            >
+                              {PAY_LABELS[m]}
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-[10px] uppercase text-muted-foreground">Note</label>
+                        <Input value={editNote} onChange={(e) => setEditNote(e.target.value)} placeholder="Ajouter une note..." />
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-[10px] uppercase text-muted-foreground">Preuve de paiement</label>
+                        <div className="flex gap-2">
+                          <Button variant="outline" size="sm" className="flex-1" onClick={() => document.getElementById("edit-upload")?.click()}>
+                            {editImage ? <><ImageIcon className="w-4 h-4 mr-2" /> Changer l'image</> : <><Camera className="w-4 h-4 mr-2" /> Ajouter une photo</>}
+                          </Button>
+                          {editImage && <Button variant="ghost" size="sm" className="text-destructive" onClick={() => setEditImage(null)}><X className="w-4 h-4" /></Button>}
+                          <input 
+                            id="edit-upload" 
+                            type="file" 
+                            accept="image/*" 
+                            className="hidden" 
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                const reader = new FileReader();
+                                reader.onloadend = () => setEditImage(reader.result as string);
+                                reader.readAsDataURL(file);
+                              }
+                            }}
+                          />
+                        </div>
+                      </div>
+
+                      <Button className="w-full gap-2 mt-2" onClick={handleUpdate}>
+                        <Save className="w-4 h-4" /> Enregistrer les modifications
+                      </Button>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-xs text-muted-foreground pt-1">Paiement : {PAY_LABELS[opened.payment_method]}</p>
+                      {opened.note && <p className="text-xs italic text-muted-foreground mt-1">Note : {opened.note}</p>}
+                      
+                      {opened.payment_image && (
+                        <div className="pt-4 border-t mt-4">
+                          <p className="text-[10px] uppercase text-muted-foreground mb-2">Preuve de paiement :</p>
+                          <div className="rounded-lg overflow-hidden border">
+                            <img src={opened.payment_image} alt="Preuve" className="w-full h-auto max-h-[300px] object-contain bg-muted" />
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
               </div>
             </>

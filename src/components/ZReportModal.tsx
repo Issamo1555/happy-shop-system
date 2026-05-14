@@ -32,6 +32,7 @@ const PAY_LABELS: Record<string, string> = {
   cash: "Espèces",
   card: "Carte",
   transfer: "Virement",
+  cheque: "Chèque",
   pack: "Pack",
 };
 

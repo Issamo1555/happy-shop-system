@@ -381,6 +381,19 @@ export const updateAppointmentAction = createServerFn({ method: "POST" })
     }
   });
 
+export const deleteAppointmentAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: { id: string, userId: string } }) => {
+    await checkAuth(data.userId);
+    const appt = await db.prepare("SELECT google_event_id FROM appointments WHERE id = ?").get(data.id) as any;
+    
+    if (appt?.google_event_id) {
+      await deleteEventFromGoogle(appt.google_event_id);
+    }
+    
+    await db.prepare("DELETE FROM appointments WHERE id = ?").run(data.id);
+    return { success: true };
+  });
+
 // ============================================
 // SALES (now requires authentication)
 // ============================================
@@ -394,9 +407,9 @@ export const saveSaleAction = createServerFn({ method: "POST" })
     try {
       const transaction = db.transaction(async () => {
       await db.prepare(`
-        INSERT INTO sales (id, cashier_id, client_id, subtotal, discount, discount_reason, total, payment_method, note)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(saleId, sale.cashier_id, sale.client_id, sale.subtotal, sale.discount, sale.discount_reason, sale.total, sale.payment_method, sale.note);
+        INSERT INTO sales (id, cashier_id, client_id, subtotal, discount, discount_reason, total, payment_method, note, payment_image)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(saleId, sale.cashier_id, sale.client_id, sale.subtotal, sale.discount, sale.discount_reason, sale.total, sale.payment_method, sale.note, sale.payment_image);
 
       const itemStmt = db.prepare(`
         INSERT INTO sale_items (id, sale_id, product_id, product_name, unit_price, quantity, line_total)
@@ -413,6 +426,17 @@ export const saveSaleAction = createServerFn({ method: "POST" })
       console.error("Error in saveSaleAction:", err);
       throw err;
     }
+  });
+
+export const updateSalePaymentAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: { id: string, payment_method: string, note?: string | null, payment_image?: string | null, userId: string } }) => {
+    await checkAuth(data.userId);
+    await db.prepare(`
+      UPDATE sales 
+      SET payment_method = ?, note = ?, payment_image = ?
+      WHERE id = ?
+    `).run(data.payment_method, data.note, data.payment_image, data.id);
+    return { success: true };
   });
 
 export const getSalesAction = createServerFn({ method: "GET" })
