@@ -36,6 +36,11 @@ interface Client {
   last_name: string | null;
   is_member: boolean;
   children_count: number;
+  type: "b2c" | "b2b";
+  company_name: string | null;
+  company_ice: string | null;
+  company_if: string | null;
+  company_address: string | null;
 }
 
 type PaymentMethod = "cash" | "card" | "transfer" | "cheque" | "pack";
@@ -169,15 +174,15 @@ function CaissePage() {
 
       await saveSaleAction({ data: saleData });
 
+      const selectedClient = clients.find(c => c.id === clientId);
       setLastTicket({
         items: [...cart.items],
         subtotal: cart.subtotal,
         discount: totalDiscount,
-        total,
-        clientName: selectedClient
-          ? `${selectedClient.first_name} ${selectedClient.last_name ?? ""}`.trim()
-          : undefined,
-        when: new Date(),
+        total: total,
+        clientName: selectedClient ? (selectedClient.type === 'b2b' && selectedClient.company_name ? selectedClient.company_name : `${selectedClient.first_name} ${selectedClient.last_name ?? ""}`) : undefined,
+        clientDetails: selectedClient || null,
+        when: new Date()
       });
       cart.clear();
       setExtraDiscount(0);
@@ -501,10 +506,17 @@ function CaissePage() {
             </div>
 
             {/* CLIENT INFO */}
-            {lastTicket.clientName && (
-              <div className="mb-4 text-xs">
+            {lastTicket.clientDetails && (
+              <div className="mb-4 text-xs border-l-2 border-primary/20 pl-3 py-1 bg-muted/20 rounded-r-md">
                 <p className="text-[10px] text-muted-foreground uppercase mb-0.5">Client</p>
-                <p className="font-medium">{lastTicket.clientName}</p>
+                <p className="font-bold">{lastTicket.clientName}</p>
+                {lastTicket.clientDetails.type === 'b2b' && (
+                  <div className="mt-1.5 text-[9px] text-muted-foreground space-y-0.5 font-mono">
+                    {lastTicket.clientDetails.company_ice && <p>ICE: {lastTicket.clientDetails.company_ice}</p>}
+                    {lastTicket.clientDetails.company_if && <p>IF: {lastTicket.clientDetails.company_if}</p>}
+                    {lastTicket.clientDetails.company_address && <p className="mt-1">ADR: {lastTicket.clientDetails.company_address}</p>}
+                  </div>
+                )}
               </div>
             )}
 
@@ -526,19 +538,23 @@ function CaissePage() {
             </div>
 
             {/* TOTALS */}
-            <div className="space-y-2 border-t border-dashed border-border pt-4">
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Sous-total</span>
-                <span>{formatDhs(lastTicket.subtotal)}</span>
+            <div className="space-y-1.5 border-t border-dashed border-border pt-4">
+              <div className="flex justify-between text-xs">
+                <span className="text-muted-foreground">Sous-total (HT)</span>
+                <span>{formatDhs(lastTicket.total / (1 + Number(settings.tva_percent || 20) / 100))}</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-muted-foreground">TVA ({settings.tva_percent || 20}%)</span>
+                <span>{formatDhs(lastTicket.total - (lastTicket.total / (1 + Number(settings.tva_percent || 20) / 100)))}</span>
               </div>
               {lastTicket.discount > 0 && (
-                <div className="flex justify-between text-sm text-primary">
+                <div className="flex justify-between text-xs text-primary font-medium">
                   <span>Remises</span>
                   <span>-{formatDhs(lastTicket.discount)}</span>
                 </div>
               )}
-              <div className="flex justify-between items-end pt-2">
-                <span className="font-display text-lg font-bold">TOTAL</span>
+              <div className="flex justify-between items-end pt-3 border-t border-double border-border mt-1">
+                <span className="font-display text-base font-bold">TOTAL TTC</span>
                 <span className="font-display text-3xl font-bold text-primary">{formatDhs(lastTicket.total)}</span>
               </div>
             </div>

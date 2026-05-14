@@ -187,6 +187,22 @@ function SettingsPage() {
                     <span className="font-medium text-lg">%</span>
                   </div>
                 </div>
+                
+                <div className="border-t pt-4 flex items-center justify-between gap-8">
+                  <div className="space-y-0.5">
+                    <Label className="text-base">Taux de TVA par défaut</Label>
+                    <p className="text-sm text-muted-foreground">Utilisé pour calculer le détail HT et TVA sur les tickets de caisse.</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Input 
+                      type="number" 
+                      className="w-24 text-right" 
+                      value={settings.tva_percent || "20"} 
+                      onChange={e => updateKey("tva_percent", e.target.value)} 
+                    />
+                    <span className="font-medium text-lg">%</span>
+                  </div>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>

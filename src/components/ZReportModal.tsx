@@ -94,6 +94,17 @@ export function ZReportModal({ open, onOpenChange, day, sales, totals, settings 
                 </p>
               ))}
             </div>
+            
+            <div className="space-y-1 border-t border-dashed border-black pt-2">
+              <p className="flex justify-between">
+                <span>Total HT</span>
+                <span>{formatDhs(totals.total / (1 + Number(settings.tva_percent || 20) / 100))}</span>
+              </p>
+              <p className="flex justify-between">
+                <span>Total TVA ({settings.tva_percent || 20}%)</span>
+                <span>{formatDhs(totals.total - (totals.total / (1 + Number(settings.tva_percent || 20) / 100)))}</span>
+              </p>
+            </div>
 
             <div className="border-t-2 border-black pt-2 flex justify-between font-bold text-lg">
               <span>TOTAL NET</span>

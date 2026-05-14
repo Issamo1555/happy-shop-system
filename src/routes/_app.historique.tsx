@@ -288,7 +288,14 @@ function HistoryPage() {
                   ))}
                 </div>
                 <div className="border-t pt-3 space-y-1">
-                  <div className="flex justify-between"><span>Sous-total</span><span>{formatDhs(Number(opened.subtotal))}</span></div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Sous-total (HT)</span>
+                    <span>{formatDhs(Number(opened.total) / (1 + Number(settings.tva_percent || 20) / 100))}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">TVA ({settings.tva_percent || 20}%)</span>
+                    <span>{formatDhs(Number(opened.total) - (Number(opened.total) / (1 + Number(settings.tva_percent || 20) / 100)))}</span>
+                  </div>
                   {Number(opened.discount) > 0 && (
                     <div className="flex justify-between text-sage-foreground">
                       <span>Remise {opened.discount_reason ? `(${opened.discount_reason})` : ""}</span>
@@ -296,7 +303,7 @@ function HistoryPage() {
                     </div>
                   )}
                   <div className="flex justify-between font-display text-xl text-primary pt-1">
-                    <span>Total</span><span>{formatDhs(Number(opened.total))}</span>
+                    <span>Total TTC</span><span>{formatDhs(Number(opened.total))}</span>
                   </div>
                   
                   {isEditing ? (
