@@ -1,12 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState, type FormEvent } from "react";
-import { getClientsAction, createClientAction, updateClientAction, deleteClientAction, getClientPacksAction, consumePackSessionAction } from "@/lib/actions";
+import { getClientsAction, createClientAction, updateClientAction, deleteClientAction, getClientPacksAction, consumePackSessionAction, toggleClientActiveAction } from "@/lib/actions";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Search, Phone, Mail, Star, Trash2 } from "lucide-react";
@@ -32,6 +33,12 @@ interface Client {
   is_member: boolean;
   children_count: number;
   notes: string | null;
+  active: boolean;
+  type: "b2c" | "b2b";
+  company_name: string | null;
+  company_ice: string | null;
+  company_if: string | null;
+  company_address: string | null;
 }
 
 interface Pack {
@@ -53,7 +60,8 @@ function ClientsPage() {
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
 
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
+  const itemsPerPage = 12;
+  const [filter, setFilter] = useState<"all" | "b2b" | "b2c">("all");
 
   const load = async () => {
     const data = await getClientsAction();
@@ -70,10 +78,9 @@ function ClientsPage() {
 
   const filtered = clients.filter((c) => {
     const q = search.toLowerCase().trim();
-    if (!q) return true;
-    return `${c.first_name} ${c.last_name ?? ""} ${c.phone ?? ""} ${c.email ?? ""}`
-      .toLowerCase()
-      .includes(q);
+    const matchSearch = !q || `${c.first_name} ${c.last_name ?? ""} ${c.phone ?? ""} ${c.email ?? ""} ${c.company_name ?? ""}`.toLowerCase().includes(q);
+    const matchFilter = filter === "all" || c.type === filter;
+    return matchSearch && matchFilter;
   });
 
   const totalPages = Math.ceil(filtered.length / itemsPerPage);
@@ -84,6 +91,15 @@ function ClientsPage() {
     await consumePackSessionAction({ data: { packId: pack.id, userId: user?.id } });
     if (selectedClient) openClient(selectedClient);
     toast.success("Séance décomptée");
+  };
+  
+  const handleToggleActive = async (id: string, active: boolean) => {
+    try {
+      await toggleClientActiveAction({ data: { id, active, userId: user?.id } });
+      load();
+    } catch (err) {
+      toast.error("Erreur lors du changement d'état");
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -104,8 +120,15 @@ function ClientsPage() {
         <h1 className="font-display text-3xl text-primary flex-1">Clients</h1>
         <div className="relative">
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <Input placeholder="Rechercher..." value={search} onChange={(e) => { setSearch(e.target.value); setCurrentPage(1); }} className="pl-9 w-64" />
+          <Input placeholder="Rechercher..." value={search} onChange={(e) => { setSearch(e.target.value); setCurrentPage(1); }} className="pl-9 w-64 h-9" />
         </div>
+        <Tabs value={filter} onValueChange={(v: any) => { setFilter(v); setCurrentPage(1); }} className="h-9">
+          <TabsList>
+            <TabsTrigger value="all" className="text-xs h-7">Tous</TabsTrigger>
+            <TabsTrigger value="b2c" className="text-xs h-7">Particuliers (B2C)</TabsTrigger>
+            <TabsTrigger value="b2b" className="text-xs h-7">Pros (B2B)</TabsTrigger>
+          </TabsList>
+        </Tabs>
         <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) setEditing(null); }}>
           <DialogTrigger asChild>
             <Button><Plus className="w-4 h-4 mr-2" />Nouveau client</Button>
@@ -123,15 +146,33 @@ function ClientsPage() {
           >
             <div className="flex items-start gap-2 mb-2">
               <div className="flex-1">
-                <p className="font-medium">
-                  {c.first_name} {c.last_name ?? ""}
-                  {c.is_member && <Star className="inline w-3.5 h-3.5 ml-1.5 text-primary fill-current" />}
-                </p>
-                {c.children_count > 0 && (
-                  <p className="text-xs text-muted-foreground">{c.children_count} enfant(s)</p>
+                  <p className="font-medium">
+                    {c.type === "b2b" && c.company_name ? c.company_name : `${c.first_name} ${c.last_name ?? ""}`}
+                    {c.is_member && <Star className="inline w-3.5 h-3.5 ml-1.5 text-primary fill-current" />}
+                  </p>
+                  {c.type === "b2b" && c.company_name && (
+                    <p className="text-[10px] text-muted-foreground italic">Contact: {c.first_name} {c.last_name}</p>
+                  )}
+                  {c.children_count > 0 && (
+                    <p className="text-xs text-muted-foreground">{c.children_count} enfant(s)</p>
+                  )}
+                {c.type === "b2b" && (
+                  <Badge variant="outline" className="mt-1 text-[10px] py-0 border-primary/30 text-primary">B2B / Partenaire</Badge>
                 )}
               </div>
-              {c.is_member && <Badge className="bg-primary-soft text-primary">Adhérent</Badge>}
+              <div className="flex flex-col items-end gap-2">
+                {c.is_member && <Badge className="bg-primary-soft text-primary">Adhérent</Badge>}
+                <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                  <Switch 
+                    checked={c.active !== false} 
+                    onCheckedChange={(checked) => handleToggleActive(c.id, checked)}
+                    className="scale-75"
+                  />
+                  <span className="text-[10px] text-muted-foreground uppercase">
+                    {c.active !== false ? "Actif" : "Inactif"}
+                  </span>
+                </div>
+              </div>
             </div>
             <div className="text-xs text-muted-foreground space-y-1">
               {c.phone && <div className="flex items-center gap-1"><Phone className="w-3 h-3" />{c.phone}</div>}
@@ -184,9 +225,22 @@ function ClientsPage() {
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div><p className="text-muted-foreground">Téléphone</p><p>{selectedClient.phone ?? "—"}</p></div>
                   <div><p className="text-muted-foreground">Email</p><p>{selectedClient.email ?? "—"}</p></div>
-                  <div><p className="text-muted-foreground">Adhérent</p><p>{selectedClient.is_member ? "Oui" : "Non"}</p></div>
+                   <div><p className="text-muted-foreground">Adhérent</p><p>{selectedClient.is_member ? "Oui" : "Non"}</p></div>
                   <div><p className="text-muted-foreground">Enfants</p><p>{selectedClient.children_count}</p></div>
+                  <div><p className="text-muted-foreground">Type Client</p><p className="font-bold">{selectedClient.type === "b2b" ? "B2B (Professionnel)" : "B2C (Particulier)"}</p></div>
                 </div>
+
+                {selectedClient.type === "b2b" && (
+                  <div className="bg-primary-soft/20 p-4 rounded-lg border border-primary/10 space-y-3">
+                    <p className="text-xs font-bold uppercase text-primary border-b border-primary/10 pb-2">Informations Société</p>
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div className="col-span-2"><p className="text-muted-foreground text-[10px] uppercase">Raison Sociale (RS)</p><p className="font-semibold">{selectedClient.company_name || "—"}</p></div>
+                      <div><p className="text-muted-foreground text-[10px] uppercase">ICE</p><p>{selectedClient.company_ice || "—"}</p></div>
+                      <div><p className="text-muted-foreground text-[10px] uppercase">IF</p><p>{selectedClient.company_if || "—"}</p></div>
+                      <div className="col-span-2"><p className="text-muted-foreground text-[10px] uppercase">Adresse Société</p><p>{selectedClient.company_address || "—"}</p></div>
+                    </div>
+                  </div>
+                )}
                 {selectedClient.notes && (
                   <div className="text-sm">
                     <p className="text-muted-foreground mb-1">Notes</p>
@@ -245,6 +299,12 @@ function ClientDialog({ client, userId, onSaved }: { client: Client | null; user
   const [member, setMember] = useState(client?.is_member ?? false);
   const [children, setChildren] = useState(client?.children_count ?? 0);
   const [notes, setNotes] = useState(client?.notes ?? "");
+  const [active, setActive] = useState(client?.active ?? true);
+  const [type, setType] = useState<"b2c" | "b2b">(client?.type ?? "b2c");
+  const [rs, setRs] = useState(client?.company_name ?? "");
+  const [ice, setIce] = useState(client?.company_ice ?? "");
+  const [ifiscal, setIfiscal] = useState(client?.company_if ?? "");
+  const [address, setAddress] = useState(client?.company_address ?? "");
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -256,6 +316,12 @@ function ClientDialog({ client, userId, onSaved }: { client: Client | null; user
       is_member: member,
       children_count: children,
       notes: notes || null,
+      active: active,
+      type: type,
+      company_name: type === "b2b" ? rs : null,
+      company_ice: type === "b2b" ? ice : null,
+      company_if: type === "b2b" ? ifiscal : null,
+      company_address: type === "b2b" ? address : null,
     };
     try {
       if (client) {
@@ -291,7 +357,49 @@ function ClientDialog({ client, userId, onSaved }: { client: Client | null; user
             <Switch checked={member} onCheckedChange={setMember} id="m" />
             <Label htmlFor="m">Adhérent réseau</Label>
           </div>
+          <div className="flex items-center gap-3 pt-6">
+            <Switch checked={active} onCheckedChange={setActive} id="a" />
+            <Label htmlFor="a">Compte Actif</Label>
+          </div>
+        </div>
+
+        {type === "b2b" && (
+          <div className="p-4 bg-primary-soft/20 rounded-lg border border-primary/10 space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
+            <p className="text-[10px] font-bold uppercase text-primary">Informations Professionnelles</p>
+            <div className="grid grid-cols-1 gap-3">
+              <div><Label className="text-[10px] uppercase">Raison Sociale (RS)</Label><Input value={rs} onChange={(e) => setRs(e.target.value)} placeholder="Nom de l'entreprise" /></div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><Label className="text-[10px] uppercase">ICE</Label><Input value={ice} onChange={(e) => setIce(e.target.value)} /></div>
+                <div><Label className="text-[10px] uppercase">IF (Identifiant Fiscal)</Label><Input value={ifiscal} onChange={(e) => setIfiscal(e.target.value)} /></div>
+              </div>
+              <div><Label className="text-[10px] uppercase">Adresse de facturation</Label><Input value={address} onChange={(e) => setAddress(e.target.value)} /></div>
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 gap-3">
           <div><Label>Nombre d'enfants</Label><Input type="number" min={0} value={children} onChange={(e) => setChildren(Number(e.target.value) || 0)} /></div>
+          <div>
+            <Label>Catégorie Client</Label>
+            <div className="flex gap-2 mt-1">
+              <Button 
+                type="button" 
+                variant={type === "b2c" ? "default" : "outline"} 
+                className="flex-1 h-9 text-xs" 
+                onClick={() => setType("b2c")}
+              >
+                B2C (Particulier)
+              </Button>
+              <Button 
+                type="button" 
+                variant={type === "b2b" ? "default" : "outline"} 
+                className="flex-1 h-9 text-xs" 
+                onClick={() => setType("b2b")}
+              >
+                B2B (Pro)
+              </Button>
+            </div>
+          </div>
         </div>
         <div><Label>Notes</Label><Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} /></div>
         <DialogFooter>

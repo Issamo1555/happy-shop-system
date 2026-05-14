@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { getAppointmentsAction, getAppointmentsRangeAction, getProductsAction, getClientsAction, updateAppointmentStatusAction, createAppointmentAction, syncFromGoogleAction, updateAppointmentAction } from "@/lib/actions";
+import { getAppointmentsAction, getAppointmentsRangeAction, getProductsAction, getClientsAction, updateAppointmentStatusAction, createAppointmentAction, syncFromGoogleAction, updateAppointmentAction, deleteAppointmentAction } from "@/lib/actions";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Clock, LayoutGrid, List, CalendarDays, RefreshCw } from "lucide-react";
+import { Plus, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Clock, LayoutGrid, List, CalendarDays, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { addDays, addWeeks, addMonths, format, isSameDay, parseISO, startOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isToday, isSameMonth } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -96,10 +96,25 @@ function AgendaPage() {
   }, []);
   useEffect(() => { load(); }, [day, view]);
 
-  const setStatus = async (id: string, status: Appt["status"]) => {
-    await updateAppointmentStatusAction({ data: { id, status, userId: user?.id } });
-    load();
-    toast.success("Statut mis à jour");
+  const setStatus = async (id: string, s: Appt["status"]) => {
+    try {
+      await updateAppointmentStatusAction({ data: { id, status: s, userId: user?.id || "" } });
+      toast.success("Statut mis à jour");
+      load();
+    } catch (err: any) {
+      toast.error(err.message);
+    }
+  };
+
+  const deleteAppt = async (id: string) => {
+    if (!confirm("Voulez-vous vraiment supprimer ce rendez-vous ?")) return;
+    try {
+      await deleteAppointmentAction({ data: { id, userId: user?.id || "" } });
+      toast.success("Rendez-vous supprimé");
+      load();
+    } catch (err: any) {
+      toast.error(err.message);
+    }
   };
 
   const navigate = (dir: number) => {
@@ -160,13 +175,19 @@ function AgendaPage() {
         {/* Edit Dialog */}
         <Dialog open={!!editAppt} onOpenChange={(v) => { if (!v) setEditAppt(null); }}>
           {editAppt && (
-            <EditApptDialog appt={editAppt} products={products} userId={user?.id} onSaved={async () => { await load(); setEditAppt(null); }} />
+            <EditApptDialog 
+              appt={editAppt} 
+              products={products} 
+              userId={user?.id} 
+              onSaved={async () => { await load(); setEditAppt(null); }} 
+              onDelete={async () => { await deleteAppt(editAppt.id); setEditAppt(null); }}
+            />
           )}
         </Dialog>
       </div>
 
       {/* Views */}
-      {view === "day" && <DayView appts={appts} onStatus={setStatus} onEdit={setEditAppt} />}
+      {view === "day" && <DayView appts={appts} onStatus={setStatus} onEdit={setEditAppt} onDelete={deleteAppt} />}
       {view === "week" && <WeekView appts={appts} day={day} onStatus={setStatus} onDayClick={(d) => { setDay(d); setView("day"); }} onEdit={setEditAppt} />}
       {view === "month" && <MonthView appts={appts} day={day} onDayClick={(d) => { setDay(d); setView("day"); }} />}
     </div>
@@ -174,7 +195,7 @@ function AgendaPage() {
 }
 
 /* ============================== DAY VIEW ============================== */
-function DayView({ appts, onStatus, onEdit }: { appts: Appt[]; onStatus: (id: string, s: Appt["status"]) => void; onEdit: (a: Appt) => void }) {
+function DayView({ appts, onStatus, onEdit, onDelete }: { appts: Appt[]; onStatus: (id: string, s: Appt["status"]) => void; onEdit: (a: Appt) => void; onDelete: (id: string) => void }) {
   if (appts.length === 0) {
     return (
       <div className="pos-card p-12 text-center text-muted-foreground">
@@ -185,7 +206,7 @@ function DayView({ appts, onStatus, onEdit }: { appts: Appt[]; onStatus: (id: st
   }
   return (
     <div className="space-y-2">
-      {appts.map((a) => <ApptRow key={a.id} appt={a} onStatus={onStatus} onEdit={onEdit} />)}
+      {appts.map((a) => <ApptRow key={a.id} appt={a} onStatus={onStatus} onEdit={onEdit} onDelete={onDelete} />)}
     </div>
   );
 }
@@ -301,7 +322,7 @@ function MonthView({ appts, day, onDayClick }: { appts: Appt[]; day: Date; onDay
 }
 
 /* ============================== APPOINTMENT ROW (Day View) ============================== */
-function ApptRow({ appt, onStatus, onEdit }: { appt: Appt; onStatus: (id: string, s: Appt["status"]) => void; onEdit: (a: Appt) => void }) {
+function ApptRow({ appt, onStatus, onEdit, onDelete }: { appt: Appt; onStatus: (id: string, s: Appt["status"]) => void; onEdit: (a: Appt) => void; onDelete: (id: string) => void }) {
   const start = parseISO(appt.starts_at);
   return (
     <div className="pos-card p-4 flex items-center gap-4">
@@ -334,6 +355,9 @@ function ApptRow({ appt, onStatus, onEdit }: { appt: Appt; onStatus: (id: string
           <SelectItem value="no_show">Absent</SelectItem>
         </SelectContent>
       </Select>
+      <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive hover:bg-destructive/10" onClick={(e) => { e.stopPropagation(); onDelete(appt.id); }}>
+        <Trash2 className="w-4 h-4" />
+      </Button>
     </div>
   );
 }
@@ -364,7 +388,7 @@ function ApptDialog({ products, clients, defaultDay, userId, onSaved }: {
       toast.error("Client et prestation requis");
       return;
     }
-    const startsAt = new Date(`${date}T${time}:00`).toISOString();
+    const startsAt = `${date}T${time}:00`;
     try {
       await createAppointmentAction({
         data: {
@@ -431,8 +455,8 @@ function ApptDialog({ products, clients, defaultDay, userId, onSaved }: {
 }
 
 /* ============================== EDIT APPOINTMENT DIALOG ============================== */
-function EditApptDialog({ appt, products, userId, onSaved }: {
-  appt: Appt; products: Product[]; userId?: string; onSaved: () => void;
+function EditApptDialog({ appt, products, userId, onSaved, onDelete }: {
+  appt: Appt; products: Product[]; userId?: string; onSaved: () => void; onDelete: () => void;
 }) {
   const [clientName, setClientName] = useState(appt.client_name);
   const [serviceName, setServiceName] = useState(appt.service_name);
@@ -445,7 +469,7 @@ function EditApptDialog({ appt, products, userId, onSaved }: {
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (!clientName) { toast.error("Nom du client requis"); return; }
-    const startsAt = new Date(`${date}T${time}:00`).toISOString();
+    const startsAt = `${date}T${time}:00`;
     try {
       await updateAppointmentAction({
         data: {
@@ -481,7 +505,13 @@ function EditApptDialog({ appt, products, userId, onSaved }: {
           <div><Label>Durée (min)</Label><Input type="number" min={15} step={15} value={duration} onChange={(e) => setDuration(Number(e.target.value) || 60)} /></div>
         </div>
         <div><Label>Notes</Label><Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} /></div>
-        <DialogFooter><Button type="submit">Enregistrer</Button></DialogFooter>
+        <DialogFooter className="flex-row justify-between sm:justify-between">
+          <Button type="button" variant="destructive" onClick={onDelete} className="gap-2">
+            <Trash2 className="w-4 h-4" />
+            Supprimer
+          </Button>
+          <Button type="submit">Enregistrer</Button>
+        </DialogFooter>
       </form>
     </DialogContent>
   );

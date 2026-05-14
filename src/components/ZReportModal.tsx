@@ -25,16 +25,18 @@ interface ZReportModalProps {
     count: number;
     byMethod: Record<string, number>;
   };
+  settings: Record<string, string>;
 }
 
 const PAY_LABELS: Record<string, string> = {
   cash: "Espèces",
   card: "Carte",
   transfer: "Virement",
+  cheque: "Chèque",
   pack: "Pack",
 };
 
-export function ZReportModal({ open, onOpenChange, day, sales, totals }: ZReportModalProps) {
+export function ZReportModal({ open, onOpenChange, day, sales, totals, settings }: ZReportModalProps) {
   const handlePrint = () => {
     window.print();
   };
@@ -49,17 +51,24 @@ export function ZReportModal({ open, onOpenChange, day, sales, totals }: ZReport
         </DialogHeader>
 
         {/* PRINTABLE AREA */}
-        <div className="space-y-6 py-4 font-mono text-sm print:m-0 print:p-0">
-          <div className="pos-card p-5 border-sage">
-            <div className="flex flex-col items-center mb-4">
-              <img src="/logo.png" alt="Mums'Home" className="h-12 mb-2" />
-              <h3 className="font-display text-lg flex items-center gap-2 text-center">
-                Mums'Home<br/>
-                <span className="text-xs uppercase text-muted-foreground font-sans">Parentalité & Co</span>
+        <div className="space-y-6 py-4 font-mono text-sm print:m-0 print:p-0 print:block print-zone">
+          <div className="flex flex-col items-center mb-4 text-center">
+            <img src="/logo.png" alt="Logo" className="h-12 mb-2" />
+            <div className="space-y-0.5">
+              <h3 className="font-display text-lg font-bold text-primary">
+                {settings.center_name || "Mums'Home"}
               </h3>
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                {settings.center_address || "Casablanca, Maroc"}
+              </p>
+              <p className="text-[10px] text-muted-foreground">
+                Tél: {settings.center_phone || "+212 6 XX XX XX XX"}
+              </p>
             </div>
-            <p className="text-xs uppercase">Rapport de clôture journalière (Z)</p>
-            <p className="text-xs border-y border-dashed border-black py-1 my-2">
+          </div>
+          <div className="border-y border-dashed border-black py-2 my-4 text-center">
+            <p className="text-xs font-bold uppercase">RAPPORT Z - CLÔTURE</p>
+            <p className="text-xs mt-1">
               Date : {format(day, "EEEE d MMMM yyyy", { locale: fr })}
             </p>
           </div>
@@ -84,6 +93,17 @@ export function ZReportModal({ open, onOpenChange, day, sales, totals }: ZReport
                   <span>{formatDhs(totals.byMethod[key] ?? 0)}</span>
                 </p>
               ))}
+            </div>
+            
+            <div className="space-y-1 border-t border-dashed border-black pt-2">
+              <p className="flex justify-between">
+                <span>Total HT</span>
+                <span>{formatDhs(totals.total / (1 + Number(settings.tva_percent || 20) / 100))}</span>
+              </p>
+              <p className="flex justify-between">
+                <span>Total TVA ({settings.tva_percent || 20}%)</span>
+                <span>{formatDhs(totals.total - (totals.total / (1 + Number(settings.tva_percent || 20) / 100)))}</span>
+              </p>
             </div>
 
             <div className="border-t-2 border-black pt-2 flex justify-between font-bold text-lg">

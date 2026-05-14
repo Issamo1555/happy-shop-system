@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { getProductsAction, getClientsAction, saveSaleAction } from "@/lib/actions";
+import { getProductsAction, getClientsAction, saveSaleAction, getSettingsAction, getCategoriesAction } from "@/lib/actions";
 import { useAuth } from "@/lib/auth-context";
 import { useCart } from "@/lib/cart-context";
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CATEGORY_LABELS, CATEGORY_ORDER, formatDhs } from "@/lib/format";
-import { Plus, Minus, Trash2, ShoppingBag, Receipt, Search, Calculator, Banknote } from "lucide-react";
+import { Plus, Minus, Trash2, ShoppingBag, Receipt, Search, Calculator, Banknote, Camera, ImageIcon, X } from "lucide-react";
 import { Numpad } from "@/components/Numpad";
 import { toast } from "sonner";
 
@@ -36,21 +36,29 @@ interface Client {
   last_name: string | null;
   is_member: boolean;
   children_count: number;
+  type: "b2c" | "b2b";
+  company_name: string | null;
+  company_ice: string | null;
+  company_if: string | null;
+  company_address: string | null;
 }
 
-type PaymentMethod = "cash" | "card" | "transfer" | "pack";
+type PaymentMethod = "cash" | "card" | "transfer" | "cheque" | "pack";
 
 function CaissePage() {
   const { user } = useAuth();
   const cart = useCart();
   const [products, setProducts] = useState<Product[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
-  const [activeCat, setActiveCat] = useState<string>(CATEGORY_ORDER[0]);
+  const [dbCategories, setDbCategories] = useState<any[]>([]);
+  const [activeCat, setActiveCat] = useState<string>("");
   const [search, setSearch] = useState("");
   const [clientId, setClientId] = useState<string | "">("");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
   const [note, setNote] = useState("");
   const [extraDiscount, setExtraDiscount] = useState<number>(0);
+  const [settings, setSettings] = useState<Record<string, string>>({});
+  const [paymentImage, setPaymentImage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [cashReceived, setCashReceived] = useState<number>(0);
   const [lastTicket, setLastTicket] = useState<null | {
@@ -66,11 +74,20 @@ function CaissePage() {
 
   useEffect(() => {
     (async () => {
-      const prods = await getProductsAction();
+      const [prods, cls, sett, cats] = await Promise.all([
+        getProductsAction(),
+        getClientsAction(),
+        getSettingsAction(),
+        getCategoriesAction()
+      ]);
       setProducts(prods as unknown as Product[]);
-      
-      const cls = await getClientsAction();
       setClients(cls as unknown as Client[]);
+      setSettings(sett as Record<string, string>);
+      setDbCategories(cats as any[]);
+      if (cats && (cats as any[]).length > 0) {
+        setActiveCat((cats as any[])[0].slug);
+      }
+      console.log("Caisse loaded settings:", sett);
     })();
   }, []);
 
@@ -89,8 +106,8 @@ function CaissePage() {
     let pct = 0;
     let reason = "";
     if (selectedClient.is_member) {
-      pct = 10;
-      reason = "Adhérent réseau -10%";
+      pct = Number(settings.member_discount_percent) || 10;
+      reason = `Adhérent réseau -${pct}%`;
     }
     if (selectedClient.children_count >= 3 && pct < 10) {
       pct = 10;
@@ -120,7 +137,7 @@ function CaissePage() {
     });
   }, [products, activeCat, search]);
 
-  const categoriesPresent = CATEGORY_ORDER;
+  const categoriesPresent = dbCategories.length > 0 ? dbCategories : CATEGORY_ORDER.map(c => ({ slug: c, name: CATEGORY_LABELS[c] }));
 
   const validateSale = async () => {
     if (!user) return;
@@ -144,6 +161,7 @@ function CaissePage() {
           total,
           payment_method: paymentMethod,
           note: note || null,
+          payment_image: paymentImage,
         },
         items: cart.items.map(i => ({
           product_id: i.productId,
@@ -156,20 +174,21 @@ function CaissePage() {
 
       await saveSaleAction({ data: saleData });
 
+      const selectedClient = clients.find(c => c.id === clientId);
       setLastTicket({
         items: [...cart.items],
         subtotal: cart.subtotal,
         discount: totalDiscount,
-        total,
-        clientName: selectedClient
-          ? `${selectedClient.first_name} ${selectedClient.last_name ?? ""}`.trim()
-          : undefined,
-        when: new Date(),
+        total: total,
+        clientName: selectedClient ? (selectedClient.type === 'b2b' && selectedClient.company_name ? selectedClient.company_name : `${selectedClient.first_name} ${selectedClient.last_name ?? ""}`) : undefined,
+        clientDetails: selectedClient || null,
+        when: new Date()
       });
       cart.clear();
       setExtraDiscount(0);
       setNote("");
       setClientId("");
+      setPaymentImage(null);
       setCashReceived(0);
       toast.success("Vente enregistrée");
     } catch (err: any) {
@@ -200,9 +219,9 @@ function CaissePage() {
           <Tabs value={activeCat} onValueChange={setActiveCat}>
             <ScrollArea className="w-full">
               <TabsList className="h-auto flex-wrap justify-start bg-muted/40">
-                {categoriesPresent.map((c) => (
-                  <TabsTrigger key={c} value={c} className="text-xs">
-                    {CATEGORY_LABELS[c]}
+                {categoriesPresent.map((c: any) => (
+                  <TabsTrigger key={c.slug || c} value={c.slug || c} className="text-xs">
+                    {c.name || CATEGORY_LABELS[c] || c}
                   </TabsTrigger>
                 ))}
               </TabsList>
@@ -227,7 +246,7 @@ function CaissePage() {
               className="pos-card p-4 text-left hover:border-primary hover:-translate-y-0.5 transition-all flex flex-col gap-2"
             >
               <Badge variant="secondary" className="self-start text-[10px]">
-                {CATEGORY_LABELS[p.category]}
+                {dbCategories.find(c => c.slug === p.category)?.name || CATEGORY_LABELS[p.category] || p.category}
               </Badge>
               <p className="font-medium text-sm leading-tight flex-1">{p.name}</p>
               <p className="font-display text-xl text-primary">{formatDhs(Number(p.price))}</p>
@@ -323,6 +342,7 @@ function CaissePage() {
                     <SelectItem value="cash">Espèces</SelectItem>
                     <SelectItem value="card">Carte</SelectItem>
                     <SelectItem value="transfer">Virement</SelectItem>
+                    <SelectItem value="cheque">Chèque</SelectItem>
                     <SelectItem value="pack">Pack séance</SelectItem>
                   </SelectContent>
                 </Select>
@@ -386,6 +406,41 @@ function CaissePage() {
                 </div>
               </div>
             )}
+            <div className="space-y-2">
+              <Label className="text-[10px] uppercase text-muted-foreground">Preuve de paiement (ex: Chèque)</Label>
+              <div className="flex gap-2 items-center">
+                <Button 
+                  variant="outline" 
+                  className={`flex-1 h-10 border-dashed ${paymentImage ? "border-sage bg-sage/5 text-sage" : "border-border"}`}
+                  onClick={() => document.getElementById("payment-upload")?.click()}
+                >
+                  {paymentImage ? (
+                    <><ImageIcon className="w-4 h-4 mr-2" /> Image chargée</>
+                  ) : (
+                    <><Camera className="w-4 h-4 mr-2" /> Prendre / Joindre une photo</>
+                  )}
+                </Button>
+                {paymentImage && (
+                  <Button size="icon" variant="ghost" className="h-10 w-10 text-destructive" onClick={() => setPaymentImage(null)}>
+                    <X className="w-4 h-4" />
+                  </Button>
+                )}
+                <input 
+                  id="payment-upload" 
+                  type="file" 
+                  accept="image/*" 
+                  className="hidden" 
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      const reader = new FileReader();
+                      reader.onloadend = () => setPaymentImage(reader.result as string);
+                      reader.readAsDataURL(file);
+                    }
+                  }}
+                />
+              </div>
+            </div>
 
             <Textarea
               placeholder="Note (optionnel)"
@@ -438,9 +493,9 @@ function CaissePage() {
                 <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-sans">Parentalité & Co</p>
               </div>
               <div className="mt-4 text-[10px] text-muted-foreground uppercase tracking-wider space-y-0.5">
-                <p>Centre de Bien-être & Accompagnement</p>
-                <p>Casablanca, Maroc</p>
-                <p>Tél: +212 6 XX XX XX XX</p>
+                <p>{settings.center_name || "Centre de Bien-être & Accompagnement"}</p>
+                <p>{settings.center_address || "Casablanca, Maroc"}</p>
+                <p>Tél: {settings.center_phone || "+212 6 XX XX XX XX"}</p>
               </div>
             </div>
 
@@ -451,10 +506,17 @@ function CaissePage() {
             </div>
 
             {/* CLIENT INFO */}
-            {lastTicket.clientName && (
-              <div className="mb-4 text-xs">
+            {lastTicket.clientDetails && (
+              <div className="mb-4 text-xs border-l-2 border-primary/20 pl-3 py-1 bg-muted/20 rounded-r-md">
                 <p className="text-[10px] text-muted-foreground uppercase mb-0.5">Client</p>
-                <p className="font-medium">{lastTicket.clientName}</p>
+                <p className="font-bold">{lastTicket.clientName}</p>
+                {lastTicket.clientDetails.type === 'b2b' && (
+                  <div className="mt-1.5 text-[9px] text-muted-foreground space-y-0.5 font-mono">
+                    {lastTicket.clientDetails.company_ice && <p>ICE: {lastTicket.clientDetails.company_ice}</p>}
+                    {lastTicket.clientDetails.company_if && <p>IF: {lastTicket.clientDetails.company_if}</p>}
+                    {lastTicket.clientDetails.company_address && <p className="mt-1">ADR: {lastTicket.clientDetails.company_address}</p>}
+                  </div>
+                )}
               </div>
             )}
 
@@ -476,19 +538,23 @@ function CaissePage() {
             </div>
 
             {/* TOTALS */}
-            <div className="space-y-2 border-t border-dashed border-border pt-4">
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Sous-total</span>
-                <span>{formatDhs(lastTicket.subtotal)}</span>
+            <div className="space-y-1.5 border-t border-dashed border-border pt-4">
+              <div className="flex justify-between text-xs">
+                <span className="text-muted-foreground">Sous-total (HT)</span>
+                <span>{formatDhs(lastTicket.total / (1 + Number(settings.tva_percent || 20) / 100))}</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-muted-foreground">TVA ({settings.tva_percent || 20}%)</span>
+                <span>{formatDhs(lastTicket.total - (lastTicket.total / (1 + Number(settings.tva_percent || 20) / 100)))}</span>
               </div>
               {lastTicket.discount > 0 && (
-                <div className="flex justify-between text-sm text-primary">
+                <div className="flex justify-between text-xs text-primary font-medium">
                   <span>Remises</span>
                   <span>-{formatDhs(lastTicket.discount)}</span>
                 </div>
               )}
-              <div className="flex justify-between items-end pt-2">
-                <span className="font-display text-lg font-bold">TOTAL</span>
+              <div className="flex justify-between items-end pt-3 border-t border-double border-border mt-1">
+                <span className="font-display text-base font-bold">TOTAL TTC</span>
                 <span className="font-display text-3xl font-bold text-primary">{formatDhs(lastTicket.total)}</span>
               </div>
             </div>

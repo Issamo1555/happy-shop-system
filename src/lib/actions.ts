@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { db } from "./db.server";
-import { readFileSync } from "fs";
+import { readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import { supabase } from "@/integrations/supabase/client";
 import bcrypt from "bcryptjs";
@@ -63,7 +63,7 @@ const resetLoginAttempts = (email: string) => {
 };
 
 // Whitelist of allowed table names for DB explorer
-const ALLOWED_TABLES = ["products", "clients", "appointments", "sales", "sale_items", "client_packs", "users"];
+const ALLOWED_TABLES = ["products", "clients", "appointments", "sales", "sale_items", "client_packs", "users", "categories", "settings"];
 
 // ============================================
 // PRODUCTS
@@ -75,6 +75,7 @@ export const getProductsAction = createServerFn({ method: "GET" })
 
 export const createProductAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: any }) => {
+    console.log("Creating product with data:", data);
     await checkAdmin(data.adminId);
     const id = data.id || crypto.randomUUID();
     const stmt = db.prepare(`
@@ -87,6 +88,7 @@ export const createProductAction = createServerFn({ method: "POST" })
 
 export const updateProductAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: any }) => {
+    console.log("Updating product with data:", data);
     await checkAdmin(data.adminId);
     const { id, name, category, type, price, active, sort_order } = data;
     await db.prepare(`
@@ -101,6 +103,82 @@ export const toggleProductActiveAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: { id: string, active: boolean, adminId: string } }) => {
     await checkAdmin(data.adminId);
     await db.prepare("UPDATE products SET active = ? WHERE id = ?").run(data.active ? 1 : 0, data.id);
+    return { success: true };
+  });
+
+// CATEGORIES
+// ============================================
+export const getCategoriesAction = createServerFn({ method: "GET" })
+  .handler(async () => {
+    return await db.prepare("SELECT * FROM categories ORDER BY sort_order ASC").all();
+  });
+
+export const createCategoryAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: any }) => {
+    await checkAdmin(data.adminId);
+    const id = crypto.randomUUID();
+    const slug = data.name.toLowerCase().trim()
+      .replace(/[àáâãäå]/g, "a")
+      .replace(/[èéêë]/g, "e")
+      .replace(/[ìíîï]/g, "i")
+      .replace(/[òóôõö]/g, "o")
+      .replace(/[ùúûü]/g, "u")
+      .replace(/[ñ]/g, "n")
+      .replace(/ /g, '-')
+      .replace(/[^\w-]+/g, '');
+    await db.prepare("INSERT INTO categories (id, name, slug, sort_order, active) VALUES (?, ?, ?, ?, ?)")
+      .run(id, data.name, slug, Number(data.sort_order) || 0, data.active !== false ? 1 : 0);
+    return { success: true, id };
+  });
+
+export const updateCategoryAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: any }) => {
+    await checkAdmin(data.adminId);
+    const { id, name, sort_order, active } = data;
+    const slug = name.toLowerCase().trim()
+      .replace(/[àáâãäå]/g, "a")
+      .replace(/[èéêë]/g, "e")
+      .replace(/[ìíîï]/g, "i")
+      .replace(/[òóôõö]/g, "o")
+      .replace(/[ùúûü]/g, "u")
+      .replace(/[ñ]/g, "n")
+      .replace(/ /g, '-')
+      .replace(/[^\w-]+/g, '');
+    await db.prepare("UPDATE categories SET name = ?, slug = ?, sort_order = ?, active = ? WHERE id = ?")
+      .run(name, slug, Number(sort_order) || 0, active ? 1 : 0, id);
+    return { success: true };
+  });
+
+export const deleteCategoryAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: { id: string, adminId: string } }) => {
+    await checkAdmin(data.adminId);
+    const category = await db.prepare("SELECT slug FROM categories WHERE id = ?").get(data.id) as any;
+    if (category) {
+       const product = await db.prepare("SELECT id FROM products WHERE category = ? LIMIT 1").get(category.slug) as any;
+       if (product) throw new Error("Impossible de supprimer une catégorie utilisée par des produits.");
+    }
+    await db.prepare("DELETE FROM categories WHERE id = ?").run(data.id);
+    return { success: true };
+  });
+
+// SETTINGS
+// ============================================
+export const getSettingsAction = createServerFn({ method: "GET" })
+  .handler(async () => {
+    const rows = await db.prepare("SELECT * FROM settings").all() as any[];
+    const result = Object.fromEntries(rows.map(r => [r.key, r.value]));
+    console.log("Server fetched settings:", result);
+    return result;
+  });
+
+export const updateSettingsAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: { settings: Record<string, string>, adminId: string } }) => {
+    await checkAdmin(data.adminId);
+    console.log("Saving settings for admin:", data.adminId, data.settings);
+    for (const [key, value] of Object.entries(data.settings)) {
+      await db.prepare("REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)")
+        .run(key, value === null ? null : String(value));
+    }
     return { success: true };
   });
 
@@ -124,22 +202,34 @@ export const createClientAction = createServerFn({ method: "POST" })
     await checkAuth(data.userId);
     const id = crypto.randomUUID();
     const stmt = db.prepare(`
-      INSERT INTO clients (id, first_name, last_name, phone, email, is_member, children_count, notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO clients (id, first_name, last_name, phone, email, is_member, children_count, notes, active, type, company_name, company_ice, company_if, company_address)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    await stmt.run(id, data.first_name, data.last_name, data.phone, data.email, data.is_member ? 1 : 0, data.children_count, data.notes);
+    await stmt.run(
+      id, data.first_name, data.last_name, data.phone, data.email, 
+      data.is_member ? 1 : 0, data.children_count, data.notes, 
+      data.active !== false ? 1 : 0, data.type || 'b2c',
+      data.company_name, data.company_ice, data.company_if, data.company_address
+    );
     return { success: true, id };
   });
 
 export const updateClientAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: any }) => {
     await checkAuth(data.userId);
-    const { id, first_name, last_name, phone, email, is_member, children_count, notes } = data;
+    const { id, first_name, last_name, phone, email, is_member, children_count, notes, active, type, company_name, company_ice, company_if, company_address } = data;
     await db.prepare(`
       UPDATE clients 
-      SET first_name = ?, last_name = ?, phone = ?, email = ?, is_member = ?, children_count = ?, notes = ?
+      SET first_name = ?, last_name = ?, phone = ?, email = ?, is_member = ?, children_count = ?, notes = ?, active = ?, type = ?, company_name = ?, company_ice = ?, company_if = ?, company_address = ?
       WHERE id = ?
-    `).run(first_name, last_name, phone, email, is_member ? 1 : 0, children_count, notes, id);
+    `).run(first_name, last_name, phone, email, is_member ? 1 : 0, children_count, notes, active ? 1 : 0, type || 'b2c', company_name, company_ice, company_if, company_address, id);
+    return { success: true };
+  });
+
+export const toggleClientActiveAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: { id: string, active: boolean, userId: string } }) => {
+    await checkAuth(data.userId);
+    await db.prepare("UPDATE clients SET active = ? WHERE id = ?").run(data.active ? 1 : 0, data.id);
     return { success: true };
   });
 
@@ -184,17 +274,30 @@ export const getAppointmentsRangeAction = createServerFn({ method: "GET" })
       .all(data.from, data.to);
   });
 
+// Helper to get Google Config for sync
+async function getGoogleConfig() {
+  const rows = await db.prepare("SELECT key, value FROM settings WHERE key LIKE 'google_%'").all() as any[];
+  const s = Object.fromEntries(rows.map(r => [r.key, r.value]));
+  return {
+    clientEmail: s.google_client_email,
+    privateKey: s.google_private_key,
+    calendarId: s.google_calendar_id
+  };
+}
+
 export const createAppointmentAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: any }) => {
     await checkAuth(data.created_by);
     const id = crypto.randomUUID();
     const startsAt = data.starts_at;
+    const createdAt = data.created_at || new Date().toLocaleString('sv-SE').replace(' ', 'T');
     const stmt = db.prepare(`
-      INSERT INTO appointments (id, client_id, client_name, product_id, service_name, starts_at, duration_min, notes, created_by, google_event_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO appointments (id, client_id, client_name, product_id, service_name, starts_at, duration_min, notes, created_by, google_event_id, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     
     // Sync to Google Calendar
+    const googleConfig = await getGoogleConfig();
     const googleEventId = await syncEventToGoogle({
       id,
       client_name: data.client_name,
@@ -202,9 +305,9 @@ export const createAppointmentAction = createServerFn({ method: "POST" })
       starts_at: startsAt,
       duration_min: data.duration_min,
       notes: data.notes
-    });
+    }, googleConfig);
 
-    await stmt.run(id, data.client_id, data.client_name, data.product_id, data.service_name, startsAt, data.duration_min, data.notes, data.created_by, googleEventId);
+    await stmt.run(id, data.client_id, data.client_name, data.product_id, data.service_name, startsAt, data.duration_min, data.notes, data.created_by, googleEventId, createdAt);
     return { success: true, id, googleEventId };
   });
 
@@ -250,28 +353,50 @@ export const syncFromGoogleAction = createServerFn({ method: "POST" })
 
 export const updateAppointmentAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: any }) => {
-// await checkAuth(data.userId);
-    const appt = await db.prepare("SELECT * FROM appointments WHERE id = ?").get(data.id) as any;
-    if (!appt) throw new Error("Rendez-vous introuvable");
+    try {
+      const appt = await db.prepare("SELECT * FROM appointments WHERE id = ?").get(data.id) as any;
+      if (!appt) throw new Error("Rendez-vous introuvable");
 
-    await db.prepare(`
-      UPDATE appointments SET client_name = ?, service_name = ?, starts_at = ?, duration_min = ?, notes = ?
-      WHERE id = ?
-    `).run(data.client_name, data.service_name, data.starts_at, data.duration_min, data.notes, data.id);
+      await db.prepare(`
+        UPDATE appointments SET client_name = ?, service_name = ?, starts_at = ?, duration_min = ?, notes = ?
+        WHERE id = ?
+      `).run(data.client_name, data.service_name, data.starts_at, data.duration_min, data.notes, data.id);
 
-    // Sync update to Google Calendar
-    if (appt.google_event_id) {
-      await syncEventToGoogle({
-        id: data.id,
-        client_name: data.client_name,
-        service_name: data.service_name,
-        starts_at: data.starts_at,
-        duration_min: data.duration_min,
-        notes: data.notes,
-        google_event_id: appt.google_event_id,
-      });
+      // Sync update to Google Calendar
+      const googleConfig = await getGoogleConfig();
+      if (appt.google_event_id || googleConfig.calendarId) {
+        const newGoogleId = await syncEventToGoogle({
+          id: data.id,
+          client_name: data.client_name,
+          service_name: data.service_name,
+          starts_at: data.starts_at,
+          duration_min: data.duration_min,
+          notes: data.notes,
+          google_event_id: appt.google_event_id,
+        }, googleConfig);
+        
+        if (newGoogleId && newGoogleId !== appt.google_event_id) {
+          await db.prepare("UPDATE appointments SET google_event_id = ? WHERE id = ?").run(newGoogleId, data.id);
+        }
+      }
+
+      return { success: true };
+    } catch (err: any) {
+      console.error("Error in updateAppointmentAction:", err);
+      throw err;
     }
+  });
 
+export const deleteAppointmentAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: { id: string, userId: string } }) => {
+    await checkAuth(data.userId);
+    const appt = await db.prepare("SELECT google_event_id FROM appointments WHERE id = ?").get(data.id) as any;
+    
+    if (appt?.google_event_id) {
+      await deleteEventFromGoogle(appt.google_event_id);
+    }
+    
+    await db.prepare("DELETE FROM appointments WHERE id = ?").run(data.id);
     return { success: true };
   });
 
@@ -283,12 +408,15 @@ export const saveSaleAction = createServerFn({ method: "POST" })
     await checkAuth(data.sale.cashier_id);
     const { sale, items } = data;
     const saleId = sale.id || crypto.randomUUID();
+    const createdAt = sale.created_at || new Date().toLocaleString('sv-SE').replace(' ', 'T');
+    console.log("Saving sale:", saleId, sale, items);
     
-    const transaction = db.transaction(async () => {
+    try {
+      const transaction = db.transaction(async () => {
       await db.prepare(`
-        INSERT INTO sales (id, cashier_id, client_id, subtotal, discount, discount_reason, total, payment_method, note)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(saleId, sale.cashier_id, sale.client_id, sale.subtotal, sale.discount, sale.discount_reason, sale.total, sale.payment_method, sale.note);
+        INSERT INTO sales (id, cashier_id, client_id, subtotal, discount, discount_reason, total, payment_method, note, payment_image, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(saleId, sale.cashier_id, sale.client_id, sale.subtotal, sale.discount, sale.discount_reason, sale.total, sale.payment_method, sale.note, sale.payment_image, createdAt);
 
       const itemStmt = db.prepare(`
         INSERT INTO sale_items (id, sale_id, product_id, product_name, unit_price, quantity, line_total)
@@ -299,19 +427,44 @@ export const saveSaleAction = createServerFn({ method: "POST" })
         await itemStmt.run(itemId, saleId, item.product_id, item.product_name, item.unit_price, item.quantity, item.line_total);
       }
     });
-    await transaction();
-    return { success: true, id: saleId };
+      await transaction();
+      return { success: true, id: saleId };
+    } catch (err: any) {
+      console.error("Error in saveSaleAction:", err);
+      throw err;
+    }
+  });
+
+export const updateSalePaymentAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: { id: string, payment_method: string, note?: string | null, payment_image?: string | null, userId: string } }) => {
+    await checkAuth(data.userId);
+    await db.prepare(`
+      UPDATE sales 
+      SET payment_method = ?, note = ?, payment_image = ?
+      WHERE id = ?
+    `).run(data.payment_method, data.note, data.payment_image, data.id);
+    return { success: true };
   });
 
 export const getSalesAction = createServerFn({ method: "GET" })
-  .handler(async ({ data }: { data: string }) => {
-    return await db.prepare(`
-      SELECT s.*, c.first_name, c.last_name 
-      FROM sales s 
-      LEFT JOIN clients c ON s.client_id = c.id 
-      WHERE date(s.created_at) = ? 
-      ORDER BY s.created_at DESC
-    `).all(data);
+  .handler(async ({ data }: { data: string | { start: string, end: string } }) => {
+    if (typeof data === "string") {
+      return await db.prepare(`
+        SELECT s.*, c.first_name, c.last_name, c.type as client_type, c.company_name, c.company_ice 
+        FROM sales s 
+        LEFT JOIN clients c ON s.client_id = c.id 
+        WHERE date(s.created_at) = ? 
+        ORDER BY s.created_at DESC
+      `).all(data);
+    } else {
+      return await db.prepare(`
+        SELECT s.*, c.first_name, c.last_name, c.type as client_type, c.company_name, c.company_ice 
+        FROM sales s 
+        LEFT JOIN clients c ON s.client_id = c.id 
+        WHERE date(s.created_at) BETWEEN ? AND ?
+        ORDER BY s.created_at DESC
+      `).all(data.start, data.end);
+    }
   });
 
 export const getSaleItemsAction = createServerFn({ method: "GET" })
@@ -435,7 +588,70 @@ export const signUpAction = createServerFn({ method: "POST" })
 // Server-side session validation
 export const validateSessionAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: { userId: string } }) => {
-    const user = await db.prepare("SELECT id, email, full_name, role, created_at FROM users WHERE id = ?").get(data.userId) as any;
+    const user = await db.prepare("SELECT id, email, full_name, role, avatar_url, created_at FROM users WHERE id = ?").get(data.userId) as any;
     if (!user) return null;
     return user;
+  });
+
+export const resetPasswordAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: any }) => {
+    const { email, inviteCode, newPassword } = data;
+    
+    if (inviteCode !== "MUMS2026") {
+      throw new Error("Code d'invitation invalide.");
+    }
+    
+    const user = await db.prepare("SELECT id FROM users WHERE email = ?").get(email) as any;
+    if (!user) {
+      throw new Error("Aucun utilisateur trouvé avec cet email.");
+    }
+    
+    const hashedPassword = bcrypt.hashSync(newPassword, 10);
+    await db.prepare("UPDATE users SET password = ? WHERE id = ?").run(hashedPassword, user.id);
+    
+    return { success: true };
+  });
+
+export const updateUserProfileAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: any }) => {
+    const { userId, email, full_name, avatar_url } = data;
+    await checkAuth(userId);
+    
+    if (email) {
+      const existing = await db.prepare("SELECT id FROM users WHERE email = ? AND id != ?").get(email, userId) as any;
+      if (existing) {
+        throw new Error("Cet email est déjà utilisé par un autre compte.");
+      }
+    }
+    
+    await db.prepare("UPDATE users SET email = ?, full_name = ?, avatar_url = ? WHERE id = ?")
+      .run(email, full_name, avatar_url, userId);
+    
+    const updated = await db.prepare("SELECT id, email, full_name, role, avatar_url, created_at FROM users WHERE id = ?").get(userId) as any;
+    return updated;
+  });
+
+export const uploadAvatarAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: any }) => {
+    // data is { userId, base64, filename }
+    const { userId, base64, filename } = data;
+    await checkAuth(userId);
+
+    if (!base64) throw new Error("Données d'image manquantes");
+
+    // Remove prefix like "data:image/png;base64,"
+    const base64Data = base64.replace(/^data:image\/\w+;base64,/, "");
+    const buffer = Buffer.from(base64Data, 'base64');
+    
+    const extension = filename.split('.').pop() || 'png';
+    const newFilename = `${userId}_${Date.now()}.${extension}`;
+    const filePath = join(process.cwd(), "public", "uploads", "avatars", newFilename);
+    
+    writeFileSync(filePath, buffer);
+    
+    const publicUrl = `/uploads/avatars/${newFilename}`;
+    await db.prepare("UPDATE users SET avatar_url = ? WHERE id = ?").run(publicUrl, userId);
+    
+    const updated = await db.prepare("SELECT id, email, full_name, role, avatar_url, created_at FROM users WHERE id = ?").get(userId) as any;
+    return updated;
   });

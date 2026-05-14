@@ -1,10 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { getSalesAction, getSaleItemsAction } from "@/lib/actions";
+import { getSalesAction, getSaleItemsAction, getSettingsAction, updateSalePaymentAction } from "@/lib/actions";
+import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { ChevronLeft, ChevronRight, Receipt as ReceiptIcon, FileDown } from "lucide-react";
+import { ChevronLeft, ChevronRight, Receipt as ReceiptIcon, FileDown, Edit2, Camera, ImageIcon, X, Save, Search } from "lucide-react";
 import { addDays, format, startOfDay } from "date-fns";
 import { fr } from "date-fns/locale";
 import { formatDhs } from "@/lib/format";
@@ -35,7 +36,14 @@ interface Sale {
   total: number;
   payment_method: "cash" | "card" | "transfer" | "pack";
   note: string | null;
-  clients: { first_name: string; last_name: string | null } | null;
+  payment_image: string | null;
+  clients: { 
+    first_name: string; 
+    last_name: string | null; 
+    client_type?: string; 
+    company_name?: string | null; 
+    company_ice?: string | null 
+  } | null;
 }
 
 interface SaleItem {
@@ -47,86 +55,155 @@ interface SaleItem {
 }
 
 const PAY_LABELS: Record<Sale["payment_method"], string> = {
-  cash: "Espèces", card: "Carte", transfer: "Virement", pack: "Pack",
+  cash: "Espèces", card: "Carte", transfer: "Virement", cheque: "Chèque", pack: "Pack",
 };
 
 function HistoryPage() {
-  const [day, setDay] = useState<Date>(startOfDay(new Date()));
+  const [startDate, setStartDate] = useState<Date>(startOfDay(new Date()));
+  const [endDate, setEndDate] = useState<Date>(startOfDay(new Date()));
   const [sales, setSales] = useState<Sale[]>([]);
   const [search, setSearch] = useState("");
   const [opened, setOpened] = useState<Sale | null>(null);
   const [items, setItems] = useState<SaleItem[]>([]);
   const [isZModalOpen, setIsZModalOpen] = useState(false);
+  const [settings, setSettings] = useState<Record<string, string>>({});
 
+  const { user } = useAuth();
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
+  const [isEditing, setIsEditing] = useState(false);
+  const [editMethod, setEditMethod] = useState<Sale["payment_method"]>("cash");
+  const [editNote, setEditNote] = useState("");
+  const [editImage, setEditImage] = useState<string | null>(null);
+
+  const [methodFilter, setMethodFilter] = useState<string>("all");
+  const [minAmount, setMinAmount] = useState("");
+  const [maxAmount, setMaxAmount] = useState("");
+
   const load = async () => {
-    const dayStr = format(day, "yyyy-MM-dd");
-    const data = await getSalesAction({ data: dayStr });
-    const mappedSales = (data as any[]).map((r: any) => ({
+    const range = {
+      start: format(startDate, "yyyy-MM-dd"),
+      end: format(endDate, "yyyy-MM-dd")
+    };
+    const [salesData, settingsData] = await Promise.all([
+      getSalesAction({ data: range }),
+      getSettingsAction()
+    ]);
+    const mappedSales = (salesData as any[]).map((r: any) => ({
       ...r,
-      clients: r.first_name ? { first_name: r.first_name, last_name: r.last_name } : null
+      clients: r.first_name ? { 
+        first_name: r.first_name, 
+        last_name: r.last_name,
+        client_type: r.client_type,
+        company_name: r.company_name,
+        company_ice: r.company_ice
+      } : null
     }));
     setSales(mappedSales as Sale[]);
-    setCurrentPage(1); // Reset page on date load
+    setSettings(settingsData as Record<string, string>);
+    setCurrentPage(1);
   };
-  useEffect(() => { load(); }, [day]);
+  useEffect(() => { load(); }, [startDate, endDate]);
 
   const openDetail = async (s: Sale) => {
     setOpened(s);
+    setIsEditing(false);
+    setEditMethod(s.payment_method);
+    setEditNote(s.note || "");
+    setEditImage(s.payment_image);
     const data = await getSaleItemsAction({ data: s.id });
     setItems(data as unknown as SaleItem[]);
   };
 
+  const handleUpdate = async () => {
+    if (!opened) return;
+    try {
+      await updateSalePaymentAction({
+        data: {
+          id: opened.id,
+          payment_method: editMethod,
+          note: editNote || null,
+          payment_image: editImage,
+          userId: user?.id || ""
+        }
+      });
+      toast.success("Vente mise à jour");
+      setIsEditing(false);
+      load();
+      setOpened({ ...opened, payment_method: editMethod, note: editNote, payment_image: editImage });
+    } catch (err: any) {
+      toast.error("Erreur: " + err.message);
+    }
+  };
+
   const handleExport = () => {
     if (sales.length === 0) return;
-    const headers = ["ID", "Heure", "Client", "Sous-total", "Remise", "Total", "Paiement", "Note"];
+    const tvaRate = Number(settings.tva_percent || 20) / 100;
+    const headers = [
+      "Date", "Heure", "Ticket ID", "Client", "Type", "RS / Entreprise", "ICE", 
+      "Total HT (DHS)", "TVA (DHS)", "Total TTC (DHS)", "Mode Paiement", "Note"
+    ];
     const csvRows = [
-      headers.join(','),
+      headers.join(';'),
       ...sales.map(s => {
+        const ht = s.total / (1 + tvaRate);
+        const tva = s.total - ht;
         const row = [
-          s.id.slice(0, 8),
+          format(new Date(s.created_at), "yyyy-MM-dd"),
           format(new Date(s.created_at), "HH:mm"),
+          s.id.slice(0, 8),
           s.clients ? `${s.clients.first_name} ${s.clients.last_name ?? ""}` : 'Anonyme',
-          s.subtotal,
-          s.discount,
-          s.total,
+          s.clients?.client_type?.toUpperCase() || 'B2C',
+          s.clients?.company_name || "",
+          s.clients?.company_ice || "",
+          ht.toFixed(2).replace('.', ','),
+          tva.toFixed(2).replace('.', ','),
+          s.total.toFixed(2).replace('.', ','),
           PAY_LABELS[s.payment_method],
           s.note || ""
         ];
-        return row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',');
+        return row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(';');
       })
     ];
-    const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    
+    // Add BOM for Excel UTF-8 compatibility
+    const blob = new Blob(["\uFEFF" + csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', `ventes_${format(day, "yyyy-MM-dd")}.csv`);
+    const fileName = `export_excel_comptable_${format(startDate, "yyyy-MM-dd")}_au_${format(endDate, "yyyy-MM-dd")}.csv`;
+    link.setAttribute('download', fileName);
     link.click();
-    toast.success("Historique exporté");
+    toast.success("Rapport Excel exporté avec succès");
   };
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return sales;
-    return sales.filter((s) =>
-      `${s.clients?.first_name ?? ""} ${s.clients?.last_name ?? ""} ${s.note ?? ""}`
-        .toLowerCase().includes(q)
-    );
-  }, [sales, search]);
+  const filteredSales = useMemo(() => {
+    return sales.filter(s => {
+      const q = search.trim().toLowerCase();
+      const matchSearch = !q || (
+        (s.clients?.first_name + " " + (s.clients?.last_name || "")).toLowerCase().includes(q) ||
+        (s.note || "").toLowerCase().includes(q) ||
+        s.id.toLowerCase().includes(q)
+      );
+      const matchMethod = methodFilter === "all" || s.payment_method === methodFilter;
+      const matchMin = !minAmount || s.total >= Number(minAmount);
+      const matchMax = !maxAmount || s.total <= Number(maxAmount);
+      return matchSearch && matchMethod && matchMin && matchMax;
+    });
+  }, [sales, search, methodFilter, minAmount, maxAmount]);
 
-  const totalPages = Math.ceil(filtered.length / itemsPerPage);
-  const paginatedSales = filtered.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+  const totalPages = Math.ceil(filteredSales.length / itemsPerPage);
+  const paginatedSales = filteredSales.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   const totals = useMemo(() => {
-    const total = sales.reduce((s, x) => s + Number(x.total), 0);
+    const total = filteredSales.reduce((s, x) => s + Number(x.total), 0);
     const byMethod: Record<string, number> = {};
-    sales.forEach((s) => {
+    filteredSales.forEach((s) => {
       byMethod[s.payment_method] = (byMethod[s.payment_method] ?? 0) + Number(s.total);
     });
-    return { total, count: sales.length, byMethod };
-  }, [sales]);
+    return { total, count: filteredSales.length, byMethod };
+  }, [filteredSales]);
 
   return (
     <div className="space-y-4">
@@ -143,15 +220,55 @@ function HistoryPage() {
           </Button>
         </div>
 
-        <div className="flex items-center gap-1 pos-card p-1">
-          <Button size="icon" variant="ghost" onClick={() => setDay((d) => addDays(d, -1))}><ChevronLeft className="w-4 h-4" /></Button>
-          <span className="px-3 text-sm font-medium min-w-[180px] text-center">
-            {format(day, "EEEE d MMMM yyyy", { locale: fr })}
-          </span>
-          <Button size="icon" variant="ghost" onClick={() => setDay((d) => addDays(d, 1))}><ChevronRight className="w-4 h-4" /></Button>
-          <Button size="sm" variant="ghost" onClick={() => setDay(startOfDay(new Date()))}>Aujourd'hui</Button>
+        <div className="flex items-center gap-3 bg-muted/40 p-2 rounded-lg border border-border/50">
+          <div className="flex items-center gap-2">
+            <label className="text-[10px] uppercase font-bold text-muted-foreground ml-2">Du</label>
+            <Input type="date" value={format(startDate, "yyyy-MM-dd")} onChange={e => setStartDate(new Date(e.target.value))} className="w-40 h-9" />
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-[10px] uppercase font-bold text-muted-foreground">Au</label>
+            <Input type="date" value={format(endDate, "yyyy-MM-dd")} onChange={e => setEndDate(new Date(e.target.value))} className="w-40 h-9" />
+          </div>
+          <Button variant="ghost" size="sm" onClick={() => { setStartDate(startOfDay(new Date())); setEndDate(startOfDay(new Date())); }}>Aujourd'hui</Button>
         </div>
-        <Input placeholder="Rechercher..." value={search} onChange={(e) => { setSearch(e.target.value); setCurrentPage(1); }} className="w-56" />
+      </div>
+
+      {/* FILTER BAR */}
+      <div className="bg-muted/30 p-4 rounded-xl border border-border/50 grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+        <div className="space-y-1.5">
+          <label className="text-[10px] uppercase font-bold text-muted-foreground">Recherche</label>
+          <div className="relative">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input placeholder="Client, note, ticket ID..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 h-9" />
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-[10px] uppercase font-bold text-muted-foreground">Mode de paiement</label>
+          <select 
+            value={methodFilter} 
+            onChange={e => setMethodFilter(e.target.value)}
+            className="w-full h-9 px-3 rounded-md border border-input bg-background text-xs focus:ring-2 focus:ring-primary/20"
+          >
+            <option value="all">Tous les modes</option>
+            {Object.entries(PAY_LABELS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+          </select>
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-[10px] uppercase font-bold text-muted-foreground">Montant Min/Max (DHS)</label>
+          <div className="flex gap-2">
+            <Input type="number" placeholder="Min" value={minAmount} onChange={e => setMinAmount(e.target.value)} className="h-9" />
+            <Input type="number" placeholder="Max" value={maxAmount} onChange={e => setMaxAmount(e.target.value)} className="h-9" />
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <Button 
+            variant="outline" 
+            className="flex-1 text-xs h-9" 
+            onClick={() => { setSearch(""); setMethodFilter("all"); setMinAmount(""); setMaxAmount(""); }}
+          >
+            Effacer les filtres
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -227,10 +344,14 @@ function HistoryPage() {
         <DialogContent>
           {opened && (
             <>
-              <DialogHeader>
+              <DialogHeader className="flex flex-row items-center justify-between">
                 <DialogTitle className="font-display text-2xl text-primary">
                   Ticket #{opened.id.slice(0, 8)}
                 </DialogTitle>
+                <Button variant="ghost" size="sm" onClick={() => setIsEditing(!isEditing)} className="gap-2">
+                  <Edit2 className="w-4 h-4" />
+                  {isEditing ? "Annuler" : "Modifier"}
+                </Button>
               </DialogHeader>
               <div className="space-y-3 text-sm">
                 <p className="text-muted-foreground">{format(new Date(opened.created_at), "PPPp", { locale: fr })}</p>
@@ -246,7 +367,14 @@ function HistoryPage() {
                   ))}
                 </div>
                 <div className="border-t pt-3 space-y-1">
-                  <div className="flex justify-between"><span>Sous-total</span><span>{formatDhs(Number(opened.subtotal))}</span></div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Sous-total (HT)</span>
+                    <span>{formatDhs(Number(opened.total) / (1 + Number(settings.tva_percent || 20) / 100))}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">TVA ({settings.tva_percent || 20}%)</span>
+                    <span>{formatDhs(Number(opened.total) - (Number(opened.total) / (1 + Number(settings.tva_percent || 20) / 100)))}</span>
+                  </div>
                   {Number(opened.discount) > 0 && (
                     <div className="flex justify-between text-sage-foreground">
                       <span>Remise {opened.discount_reason ? `(${opened.discount_reason})` : ""}</span>
@@ -254,9 +382,77 @@ function HistoryPage() {
                     </div>
                   )}
                   <div className="flex justify-between font-display text-xl text-primary pt-1">
-                    <span>Total</span><span>{formatDhs(Number(opened.total))}</span>
+                    <span>Total TTC</span><span>{formatDhs(Number(opened.total))}</span>
                   </div>
-                  <p className="text-xs text-muted-foreground pt-1">Paiement : {PAY_LABELS[opened.payment_method]}</p>
+                  
+                  {isEditing ? (
+                    <div className="space-y-4 pt-4 border-t mt-4 bg-muted/30 p-4 rounded-lg">
+                      <p className="text-xs font-bold uppercase text-primary">Mode de paiement & Preuve</p>
+                      
+                      <div className="space-y-2">
+                        <label className="text-[10px] uppercase text-muted-foreground">Mode de paiement</label>
+                        <div className="grid grid-cols-2 gap-2">
+                          {(["cash", "card", "transfer", "cheque"] as const).map((m) => (
+                            <Button
+                              key={m}
+                              variant={editMethod === m ? "default" : "outline"}
+                              size="sm"
+                              onClick={() => setEditMethod(m)}
+                            >
+                              {PAY_LABELS[m]}
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-[10px] uppercase text-muted-foreground">Note</label>
+                        <Input value={editNote} onChange={(e) => setEditNote(e.target.value)} placeholder="Ajouter une note..." />
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-[10px] uppercase text-muted-foreground">Preuve de paiement</label>
+                        <div className="flex gap-2">
+                          <Button variant="outline" size="sm" className="flex-1" onClick={() => document.getElementById("edit-upload")?.click()}>
+                            {editImage ? <><ImageIcon className="w-4 h-4 mr-2" /> Changer l'image</> : <><Camera className="w-4 h-4 mr-2" /> Ajouter une photo</>}
+                          </Button>
+                          {editImage && <Button variant="ghost" size="sm" className="text-destructive" onClick={() => setEditImage(null)}><X className="w-4 h-4" /></Button>}
+                          <input 
+                            id="edit-upload" 
+                            type="file" 
+                            accept="image/*" 
+                            className="hidden" 
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                const reader = new FileReader();
+                                reader.onloadend = () => setEditImage(reader.result as string);
+                                reader.readAsDataURL(file);
+                              }
+                            }}
+                          />
+                        </div>
+                      </div>
+
+                      <Button className="w-full gap-2 mt-2" onClick={handleUpdate}>
+                        <Save className="w-4 h-4" /> Enregistrer les modifications
+                      </Button>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-xs text-muted-foreground pt-1">Paiement : {PAY_LABELS[opened.payment_method]}</p>
+                      {opened.note && <p className="text-xs italic text-muted-foreground mt-1">Note : {opened.note}</p>}
+                      
+                      {opened.payment_image && (
+                        <div className="pt-4 border-t mt-4">
+                          <p className="text-[10px] uppercase text-muted-foreground mb-2">Preuve de paiement :</p>
+                          <div className="rounded-lg overflow-hidden border">
+                            <img src={opened.payment_image} alt="Preuve" className="w-full h-auto max-h-[300px] object-contain bg-muted" />
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
               </div>
             </>
@@ -267,9 +463,10 @@ function HistoryPage() {
       <ZReportModal 
         open={isZModalOpen} 
         onOpenChange={setIsZModalOpen}
-        day={day}
+        day={endDate}
         sales={sales}
         totals={totals}
+        settings={settings}
       />
     </div>
   );
