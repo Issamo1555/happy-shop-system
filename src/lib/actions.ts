@@ -67,9 +67,21 @@ const ALLOWED_TABLES = ["products", "clients", "appointments", "sales", "sale_it
 // ============================================
 // PRODUCTS
 // ============================================
+// Generic wrapper for server actions to ensure plain objects and error safety
+const safeAction = async (fn: () => Promise<any>) => {
+  try {
+    const res = await fn();
+    // Ensure the result is a plain object/array for serialization
+    return JSON.parse(JSON.stringify(res));
+  } catch (err: any) {
+    console.error("Server Action Error:", err.message);
+    throw err;
+  }
+};
+
 export const getProductsAction = createServerFn({ method: "GET" })
   .handler(async () => {
-    return await db.prepare("SELECT * FROM products WHERE deleted = 0 ORDER BY category ASC, sort_order ASC").all();
+    return safeAction(() => db.prepare("SELECT * FROM products WHERE deleted = 0 ORDER BY category ASC, sort_order ASC").all());
   });
 
 export const createProductAction = createServerFn({ method: "POST" })

@@ -179,18 +179,28 @@ function HistoryPage() {
   };
 
   const filteredSales = useMemo(() => {
-    return sales.filter(s => {
-      const q = search.trim().toLowerCase();
-      const matchSearch = !q || (
-        (s.clients?.first_name + " " + (s.clients?.last_name || "")).toLowerCase().includes(q) ||
-        (s.note || "").toLowerCase().includes(q) ||
-        s.id.toLowerCase().includes(q)
+    let result = [...sales];
+    
+    // Search filter
+    if (search) {
+      const q = search.toLowerCase();
+      result = result.filter(s => 
+        s.id.toLowerCase().includes(q) || 
+        (s.clients && (s.clients.first_name + " " + (s.clients.last_name || "")).toLowerCase().includes(q)) ||
+        (s.note && s.note.toLowerCase().includes(q))
       );
-      const matchMethod = methodFilter === "all" || s.payment_method === methodFilter;
-      const matchMin = !minAmount || s.total >= Number(minAmount);
-      const matchMax = !maxAmount || s.total <= Number(maxAmount);
-      return matchSearch && matchMethod && matchMin && matchMax;
-    });
+    }
+    
+    // Payment method filter
+    if (methodFilter !== "all") {
+      result = result.filter(s => s.payment_method === methodFilter);
+    }
+    
+    // Min/Max Amount filter
+    if (minAmount) result = result.filter(s => s.total >= Number(minAmount));
+    if (maxAmount) result = result.filter(s => s.total <= Number(maxAmount));
+
+    return result;
   }, [sales, search, methodFilter, minAmount, maxAmount]);
 
   const totalPages = Math.ceil(filteredSales.length / itemsPerPage);

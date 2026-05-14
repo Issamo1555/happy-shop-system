@@ -4,13 +4,13 @@ import { join } from "path";
 import bcrypt from "bcryptjs";
 
 // Database Configuration
-const isMySQL = false; // Force SQLite as per user request
+const isMySQL = !!process.env.MYSQL_HOST;
 
 let sqliteDb: any = null;
 let mysqlPool: mysql.Pool | null = null;
 
 if (isMySQL) {
-  console.log("Using MySQL database (XAMPP/Remote)");
+  console.log("🚀 Using MySQL database (XAMPP/Remote)");
   mysqlPool = mysql.createPool({
     host: process.env.MYSQL_HOST,
     port: Number(process.env.MYSQL_PORT) || 3306,
@@ -22,10 +22,8 @@ if (isMySQL) {
     queueLimit: 0
   });
 } else {
-  console.log("Using SQLite database (pos.db)");
-  const dbPath = process.env.NODE_ENV === "production"
-    ? join(process.cwd(), "data", "pos.db")
-    : join(process.cwd(), "pos.db");
+  console.log("📦 Using SQLite database (pos.db)");
+  const dbPath = join(process.cwd(), "pos.db");
   sqliteDb = new Database(dbPath);
   sqliteDb.pragma("journal_mode = WAL");
 }
@@ -332,6 +330,12 @@ export const initServerDb = async () => {
         value TEXT,
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
+
+      -- Index pour la performance
+      CREATE INDEX IF NOT EXISTS idx_sales_date ON sales(created_at);
+      CREATE INDEX IF NOT EXISTS idx_appt_date ON appointments(starts_at);
+      CREATE INDEX IF NOT EXISTS idx_prod_cat ON products(category);
+      CREATE INDEX IF NOT EXISTS idx_clients_name ON clients(last_name, first_name);
     `);
   }
 
