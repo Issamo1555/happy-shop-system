@@ -47,6 +47,7 @@ function SettingsPage() {
     try {
       await updateSettingsAction({ data: { settings, adminId: user?.id || "" } });
       toast.success("Paramètres enregistrés");
+      await fetchSettings();
     } catch (err: any) {
       toast.error(err.message || "Erreur lors de l'enregistrement");
     } finally {

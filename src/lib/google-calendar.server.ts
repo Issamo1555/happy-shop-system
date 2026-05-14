@@ -52,41 +52,53 @@ export const syncEventToGoogle = async (appt: {
   duration_min: number;
   notes?: string | null;
   google_event_id?: string | null;
-}) => {
-  if (!calendar || !GOOGLE_CALENDAR_ID) {
+}, config?: { clientEmail?: string, privateKey?: string, calendarId?: string }) => {
+  
+  // Use config from DB if provided, else fallback to env
+  const email = config?.clientEmail || GOOGLE_CLIENT_EMAIL;
+  const key = (config?.privateKey || GOOGLE_PRIVATE_KEY || "").replace(/\\n/g, "\n");
+  const calendarId = config?.calendarId || GOOGLE_CALENDAR_ID;
+
+  if (!email || !key || !calendarId) {
     console.log("Google Calendar sync skipped: not configured");
-    return null;
+    return appt.google_event_id || null;
   }
 
-  const start = new Date(appt.starts_at);
-  const end = new Date(start.getTime() + appt.duration_min * 60000);
-
-  const eventBody = {
-    summary: `${appt.client_name} - ${appt.service_name}`,
-    description: appt.notes || "",
-    start: { dateTime: start.toISOString(), timeZone: "Africa/Casablanca" },
-    end: { dateTime: end.toISOString(), timeZone: "Africa/Casablanca" },
-  };
-
   try {
+    const jwtAuth = new google.auth.JWT({
+      email,
+      key,
+      scopes: ["https://www.googleapis.com/auth/calendar.events"],
+    });
+    const cal = google.calendar({ version: "v3", auth: jwtAuth });
+
+    const start = new Date(appt.starts_at);
+    const end = new Date(start.getTime() + appt.duration_min * 60000);
+
+    const eventBody = {
+      summary: `${appt.client_name} - ${appt.service_name}`,
+      description: appt.notes || "",
+      start: { dateTime: start.toISOString(), timeZone: "Africa/Casablanca" },
+      end: { dateTime: end.toISOString(), timeZone: "Africa/Casablanca" },
+    };
+
     if (appt.google_event_id) {
-      const res = await calendar.events.update({
-        calendarId: GOOGLE_CALENDAR_ID,
+      const res = await cal.events.update({
+        calendarId,
         eventId: appt.google_event_id,
         requestBody: eventBody,
       });
       return res.data.id;
     } else {
-      const res = await calendar.events.insert({
-        calendarId: GOOGLE_CALENDAR_ID,
+      const res = await cal.events.insert({
+        calendarId,
         requestBody: eventBody,
       });
-      console.log("[Google Calendar] Event created:", res.data.id);
       return res.data.id;
     }
   } catch (error: any) {
     console.error("[Google Calendar] Sync error:", error.message);
-    return null;
+    return appt.google_event_id || null;
   }
 };
 

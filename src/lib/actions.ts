@@ -63,7 +63,7 @@ const resetLoginAttempts = (email: string) => {
 };
 
 // Whitelist of allowed table names for DB explorer
-const ALLOWED_TABLES = ["products", "clients", "appointments", "sales", "sale_items", "client_packs", "users"];
+const ALLOWED_TABLES = ["products", "clients", "appointments", "sales", "sale_items", "client_packs", "users", "categories", "settings"];
 
 // ============================================
 // PRODUCTS
@@ -166,15 +166,18 @@ export const deleteCategoryAction = createServerFn({ method: "POST" })
 export const getSettingsAction = createServerFn({ method: "GET" })
   .handler(async () => {
     const rows = await db.prepare("SELECT * FROM settings").all() as any[];
-    return Object.fromEntries(rows.map(r => [r.key, r.value]));
+    const result = Object.fromEntries(rows.map(r => [r.key, r.value]));
+    console.log("Server fetched settings:", result);
+    return result;
   });
 
 export const updateSettingsAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: { settings: Record<string, string>, adminId: string } }) => {
     await checkAdmin(data.adminId);
+    console.log("Saving settings for admin:", data.adminId, data.settings);
     for (const [key, value] of Object.entries(data.settings)) {
-      await db.prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = CURRENT_TIMESTAMP")
-        .run(key, value, value);
+      await db.prepare("REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)")
+        .run(key, value === null ? null : String(value));
     }
     return { success: true };
   });
@@ -266,6 +269,17 @@ export const getAppointmentsRangeAction = createServerFn({ method: "GET" })
       .all(data.from, data.to);
   });
 
+// Helper to get Google Config for sync
+async function getGoogleConfig() {
+  const rows = await db.prepare("SELECT key, value FROM settings WHERE key LIKE 'google_%'").all() as any[];
+  const s = Object.fromEntries(rows.map(r => [r.key, r.value]));
+  return {
+    clientEmail: s.google_client_email,
+    privateKey: s.google_private_key,
+    calendarId: s.google_calendar_id
+  };
+}
+
 export const createAppointmentAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: any }) => {
     await checkAuth(data.created_by);
@@ -277,6 +291,7 @@ export const createAppointmentAction = createServerFn({ method: "POST" })
     `);
     
     // Sync to Google Calendar
+    const googleConfig = await getGoogleConfig();
     const googleEventId = await syncEventToGoogle({
       id,
       client_name: data.client_name,
@@ -284,7 +299,7 @@ export const createAppointmentAction = createServerFn({ method: "POST" })
       starts_at: startsAt,
       duration_min: data.duration_min,
       notes: data.notes
-    });
+    }, googleConfig);
 
     await stmt.run(id, data.client_id, data.client_name, data.product_id, data.service_name, startsAt, data.duration_min, data.notes, data.created_by, googleEventId);
     return { success: true, id, googleEventId };
@@ -332,29 +347,38 @@ export const syncFromGoogleAction = createServerFn({ method: "POST" })
 
 export const updateAppointmentAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: any }) => {
-// await checkAuth(data.userId);
-    const appt = await db.prepare("SELECT * FROM appointments WHERE id = ?").get(data.id) as any;
-    if (!appt) throw new Error("Rendez-vous introuvable");
+    try {
+      const appt = await db.prepare("SELECT * FROM appointments WHERE id = ?").get(data.id) as any;
+      if (!appt) throw new Error("Rendez-vous introuvable");
 
-    await db.prepare(`
-      UPDATE appointments SET client_name = ?, service_name = ?, starts_at = ?, duration_min = ?, notes = ?
-      WHERE id = ?
-    `).run(data.client_name, data.service_name, data.starts_at, data.duration_min, data.notes, data.id);
+      await db.prepare(`
+        UPDATE appointments SET client_name = ?, service_name = ?, starts_at = ?, duration_min = ?, notes = ?
+        WHERE id = ?
+      `).run(data.client_name, data.service_name, data.starts_at, data.duration_min, data.notes, data.id);
 
-    // Sync update to Google Calendar
-    if (appt.google_event_id) {
-      await syncEventToGoogle({
-        id: data.id,
-        client_name: data.client_name,
-        service_name: data.service_name,
-        starts_at: data.starts_at,
-        duration_min: data.duration_min,
-        notes: data.notes,
-        google_event_id: appt.google_event_id,
-      });
+      // Sync update to Google Calendar
+      const googleConfig = await getGoogleConfig();
+      if (appt.google_event_id || googleConfig.calendarId) {
+        const newGoogleId = await syncEventToGoogle({
+          id: data.id,
+          client_name: data.client_name,
+          service_name: data.service_name,
+          starts_at: data.starts_at,
+          duration_min: data.duration_min,
+          notes: data.notes,
+          google_event_id: appt.google_event_id,
+        }, googleConfig);
+        
+        if (newGoogleId && newGoogleId !== appt.google_event_id) {
+          await db.prepare("UPDATE appointments SET google_event_id = ? WHERE id = ?").run(newGoogleId, data.id);
+        }
+      }
+
+      return { success: true };
+    } catch (err: any) {
+      console.error("Error in updateAppointmentAction:", err);
+      throw err;
     }
-
-    return { success: true };
   });
 
 // ============================================
@@ -365,8 +389,10 @@ export const saveSaleAction = createServerFn({ method: "POST" })
     await checkAuth(data.sale.cashier_id);
     const { sale, items } = data;
     const saleId = sale.id || crypto.randomUUID();
+    console.log("Saving sale:", saleId, sale, items);
     
-    const transaction = db.transaction(async () => {
+    try {
+      const transaction = db.transaction(async () => {
       await db.prepare(`
         INSERT INTO sales (id, cashier_id, client_id, subtotal, discount, discount_reason, total, payment_method, note)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -381,8 +407,12 @@ export const saveSaleAction = createServerFn({ method: "POST" })
         await itemStmt.run(itemId, saleId, item.product_id, item.product_name, item.unit_price, item.quantity, item.line_total);
       }
     });
-    await transaction();
-    return { success: true, id: saleId };
+      await transaction();
+      return { success: true, id: saleId };
+    } catch (err: any) {
+      console.error("Error in saveSaleAction:", err);
+      throw err;
+    }
   });
 
 export const getSalesAction = createServerFn({ method: "GET" })

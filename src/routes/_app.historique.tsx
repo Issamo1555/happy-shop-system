@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { getSalesAction, getSaleItemsAction } from "@/lib/actions";
+import { getSalesAction, getSaleItemsAction, getSettingsAction } from "@/lib/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -57,18 +57,23 @@ function HistoryPage() {
   const [opened, setOpened] = useState<Sale | null>(null);
   const [items, setItems] = useState<SaleItem[]>([]);
   const [isZModalOpen, setIsZModalOpen] = useState(false);
+  const [settings, setSettings] = useState<Record<string, string>>({});
 
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
   const load = async () => {
     const dayStr = format(day, "yyyy-MM-dd");
-    const data = await getSalesAction({ data: dayStr });
-    const mappedSales = (data as any[]).map((r: any) => ({
+    const [salesData, settingsData] = await Promise.all([
+      getSalesAction({ data: dayStr }),
+      getSettingsAction()
+    ]);
+    const mappedSales = (salesData as any[]).map((r: any) => ({
       ...r,
       clients: r.first_name ? { first_name: r.first_name, last_name: r.last_name } : null
     }));
     setSales(mappedSales as Sale[]);
+    setSettings(settingsData as Record<string, string>);
     setCurrentPage(1); // Reset page on date load
   };
   useEffect(() => { load(); }, [day]);
@@ -270,6 +275,7 @@ function HistoryPage() {
         day={day}
         sales={sales}
         totals={totals}
+        settings={settings}
       />
     </div>
   );

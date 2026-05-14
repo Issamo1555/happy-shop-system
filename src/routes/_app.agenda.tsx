@@ -96,10 +96,14 @@ function AgendaPage() {
   }, []);
   useEffect(() => { load(); }, [day, view]);
 
-  const setStatus = async (id: string, status: Appt["status"]) => {
-    await updateAppointmentStatusAction({ data: { id, status, userId: user?.id } });
-    load();
-    toast.success("Statut mis à jour");
+  const setStatus = async (id: string, s: Appt["status"]) => {
+    try {
+      await updateAppointmentStatusAction({ data: { id, status: s, userId: user?.id || "" } });
+      toast.success("Statut mis à jour");
+      load();
+    } catch (err: any) {
+      toast.error(err.message);
+    }
   };
 
   const navigate = (dir: number) => {

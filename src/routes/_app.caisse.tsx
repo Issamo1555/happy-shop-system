@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { getProductsAction, getClientsAction, saveSaleAction } from "@/lib/actions";
+import { getProductsAction, getClientsAction, saveSaleAction, getSettingsAction, getCategoriesAction } from "@/lib/actions";
 import { useAuth } from "@/lib/auth-context";
 import { useCart } from "@/lib/cart-context";
 import { Button } from "@/components/ui/button";
@@ -45,12 +45,14 @@ function CaissePage() {
   const cart = useCart();
   const [products, setProducts] = useState<Product[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
-  const [activeCat, setActiveCat] = useState<string>(CATEGORY_ORDER[0]);
+  const [dbCategories, setDbCategories] = useState<any[]>([]);
+  const [activeCat, setActiveCat] = useState<string>("");
   const [search, setSearch] = useState("");
   const [clientId, setClientId] = useState<string | "">("");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
   const [note, setNote] = useState("");
   const [extraDiscount, setExtraDiscount] = useState<number>(0);
+  const [settings, setSettings] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [cashReceived, setCashReceived] = useState<number>(0);
   const [lastTicket, setLastTicket] = useState<null | {
@@ -66,11 +68,20 @@ function CaissePage() {
 
   useEffect(() => {
     (async () => {
-      const prods = await getProductsAction();
+      const [prods, cls, sett, cats] = await Promise.all([
+        getProductsAction(),
+        getClientsAction(),
+        getSettingsAction(),
+        getCategoriesAction()
+      ]);
       setProducts(prods as unknown as Product[]);
-      
-      const cls = await getClientsAction();
       setClients(cls as unknown as Client[]);
+      setSettings(sett as Record<string, string>);
+      setDbCategories(cats as any[]);
+      if (cats && (cats as any[]).length > 0) {
+        setActiveCat((cats as any[])[0].slug);
+      }
+      console.log("Caisse loaded settings:", sett);
     })();
   }, []);
 
@@ -89,8 +100,8 @@ function CaissePage() {
     let pct = 0;
     let reason = "";
     if (selectedClient.is_member) {
-      pct = 10;
-      reason = "Adhérent réseau -10%";
+      pct = Number(settings.member_discount_percent) || 10;
+      reason = `Adhérent réseau -${pct}%`;
     }
     if (selectedClient.children_count >= 3 && pct < 10) {
       pct = 10;
@@ -120,7 +131,7 @@ function CaissePage() {
     });
   }, [products, activeCat, search]);
 
-  const categoriesPresent = CATEGORY_ORDER;
+  const categoriesPresent = dbCategories.length > 0 ? dbCategories : CATEGORY_ORDER.map(c => ({ slug: c, name: CATEGORY_LABELS[c] }));
 
   const validateSale = async () => {
     if (!user) return;
@@ -200,9 +211,9 @@ function CaissePage() {
           <Tabs value={activeCat} onValueChange={setActiveCat}>
             <ScrollArea className="w-full">
               <TabsList className="h-auto flex-wrap justify-start bg-muted/40">
-                {categoriesPresent.map((c) => (
-                  <TabsTrigger key={c} value={c} className="text-xs">
-                    {CATEGORY_LABELS[c]}
+                {categoriesPresent.map((c: any) => (
+                  <TabsTrigger key={c.slug || c} value={c.slug || c} className="text-xs">
+                    {c.name || CATEGORY_LABELS[c] || c}
                   </TabsTrigger>
                 ))}
               </TabsList>
@@ -227,7 +238,7 @@ function CaissePage() {
               className="pos-card p-4 text-left hover:border-primary hover:-translate-y-0.5 transition-all flex flex-col gap-2"
             >
               <Badge variant="secondary" className="self-start text-[10px]">
-                {CATEGORY_LABELS[p.category]}
+                {dbCategories.find(c => c.slug === p.category)?.name || CATEGORY_LABELS[p.category] || p.category}
               </Badge>
               <p className="font-medium text-sm leading-tight flex-1">{p.name}</p>
               <p className="font-display text-xl text-primary">{formatDhs(Number(p.price))}</p>
@@ -438,9 +449,9 @@ function CaissePage() {
                 <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-sans">Parentalité & Co</p>
               </div>
               <div className="mt-4 text-[10px] text-muted-foreground uppercase tracking-wider space-y-0.5">
-                <p>Centre de Bien-être & Accompagnement</p>
-                <p>Casablanca, Maroc</p>
-                <p>Tél: +212 6 XX XX XX XX</p>
+                <p>{settings.center_name || "Centre de Bien-être & Accompagnement"}</p>
+                <p>{settings.center_address || "Casablanca, Maroc"}</p>
+                <p>Tél: {settings.center_phone || "+212 6 XX XX XX XX"}</p>
               </div>
             </div>
 

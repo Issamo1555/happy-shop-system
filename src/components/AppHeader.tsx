@@ -1,7 +1,7 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
-import { Heart, ShoppingBag, Users, Calendar, Receipt, LogOut, Package, HardDrive, Database, User, Camera, Upload, Settings } from "lucide-react";
+import { Heart, ShoppingBag, Users, Calendar, Receipt, LogOut, Package, HardDrive, Database, User, Camera, Upload, Settings, LayoutDashboard } from "lucide-react";
 import { toast } from "sonner";
 import { downloadDatabaseAction } from "@/lib/actions";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
@@ -11,6 +11,7 @@ import { useState, useEffect } from "react";
 import logo from "@/assets/logo.png";
 
 const navItems = [
+  { to: "/dashboard", label: "Bureau", icon: LayoutDashboard },
   { to: "/caisse", label: "Caisse", icon: ShoppingBag },
   { to: "/catalogue", label: "Catalogue", icon: Package },
   { to: "/clients", label: "Clients", icon: Users },
@@ -79,7 +80,7 @@ export function AppHeader() {
 
   const handleBackup = async () => {
     try {
-      const { content, filename } = await downloadDatabaseAction();
+      const { content, filename } = await downloadDatabaseAction({ data: { adminId: user?.id || "" } });
       const byteCharacters = atob(content);
       const byteNumbers = new Array(byteCharacters.length);
       for (let i = 0; i < byteCharacters.length; i++) {
@@ -102,7 +103,7 @@ export function AppHeader() {
   return (
     <header className="border-b border-border bg-card/80 backdrop-blur sticky top-0 z-40">
       <div className="max-w-[1400px] mx-auto px-4 lg:px-6 h-16 flex items-center gap-6">
-        <Link to="/caisse" className="flex items-center gap-3">
+        <Link to="/dashboard" className="flex items-center gap-3">
           <img src={logo} alt="Logo" className="w-10 h-10 drop-shadow-sm" />
           <div className="hidden sm:block">
             <p className="font-display text-lg leading-none text-primary">Mums'Home</p>
