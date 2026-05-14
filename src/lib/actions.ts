@@ -202,22 +202,27 @@ export const createClientAction = createServerFn({ method: "POST" })
     await checkAuth(data.userId);
     const id = crypto.randomUUID();
     const stmt = db.prepare(`
-      INSERT INTO clients (id, first_name, last_name, phone, email, is_member, children_count, notes, active)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO clients (id, first_name, last_name, phone, email, is_member, children_count, notes, active, type, company_name, company_ice, company_if, company_address)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    await stmt.run(id, data.first_name, data.last_name, data.phone, data.email, data.is_member ? 1 : 0, data.children_count, data.notes, data.active !== false ? 1 : 0);
+    await stmt.run(
+      id, data.first_name, data.last_name, data.phone, data.email, 
+      data.is_member ? 1 : 0, data.children_count, data.notes, 
+      data.active !== false ? 1 : 0, data.type || 'b2c',
+      data.company_name, data.company_ice, data.company_if, data.company_address
+    );
     return { success: true, id };
   });
 
 export const updateClientAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: any }) => {
     await checkAuth(data.userId);
-    const { id, first_name, last_name, phone, email, is_member, children_count, notes, active } = data;
+    const { id, first_name, last_name, phone, email, is_member, children_count, notes, active, type, company_name, company_ice, company_if, company_address } = data;
     await db.prepare(`
       UPDATE clients 
-      SET first_name = ?, last_name = ?, phone = ?, email = ?, is_member = ?, children_count = ?, notes = ?, active = ?
+      SET first_name = ?, last_name = ?, phone = ?, email = ?, is_member = ?, children_count = ?, notes = ?, active = ?, type = ?, company_name = ?, company_ice = ?, company_if = ?, company_address = ?
       WHERE id = ?
-    `).run(first_name, last_name, phone, email, is_member ? 1 : 0, children_count, notes, active ? 1 : 0, id);
+    `).run(first_name, last_name, phone, email, is_member ? 1 : 0, children_count, notes, active ? 1 : 0, type || 'b2c', company_name, company_ice, company_if, company_address, id);
     return { success: true };
   });
 
@@ -285,9 +290,10 @@ export const createAppointmentAction = createServerFn({ method: "POST" })
     await checkAuth(data.created_by);
     const id = crypto.randomUUID();
     const startsAt = data.starts_at;
+    const createdAt = data.created_at || new Date().toLocaleString('sv-SE').replace(' ', 'T');
     const stmt = db.prepare(`
-      INSERT INTO appointments (id, client_id, client_name, product_id, service_name, starts_at, duration_min, notes, created_by, google_event_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO appointments (id, client_id, client_name, product_id, service_name, starts_at, duration_min, notes, created_by, google_event_id, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     
     // Sync to Google Calendar
@@ -301,7 +307,7 @@ export const createAppointmentAction = createServerFn({ method: "POST" })
       notes: data.notes
     }, googleConfig);
 
-    await stmt.run(id, data.client_id, data.client_name, data.product_id, data.service_name, startsAt, data.duration_min, data.notes, data.created_by, googleEventId);
+    await stmt.run(id, data.client_id, data.client_name, data.product_id, data.service_name, startsAt, data.duration_min, data.notes, data.created_by, googleEventId, createdAt);
     return { success: true, id, googleEventId };
   });
 
@@ -402,14 +408,15 @@ export const saveSaleAction = createServerFn({ method: "POST" })
     await checkAuth(data.sale.cashier_id);
     const { sale, items } = data;
     const saleId = sale.id || crypto.randomUUID();
+    const createdAt = sale.created_at || new Date().toLocaleString('sv-SE').replace(' ', 'T');
     console.log("Saving sale:", saleId, sale, items);
     
     try {
       const transaction = db.transaction(async () => {
       await db.prepare(`
-        INSERT INTO sales (id, cashier_id, client_id, subtotal, discount, discount_reason, total, payment_method, note, payment_image)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(saleId, sale.cashier_id, sale.client_id, sale.subtotal, sale.discount, sale.discount_reason, sale.total, sale.payment_method, sale.note, sale.payment_image);
+        INSERT INTO sales (id, cashier_id, client_id, subtotal, discount, discount_reason, total, payment_method, note, payment_image, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(saleId, sale.cashier_id, sale.client_id, sale.subtotal, sale.discount, sale.discount_reason, sale.total, sale.payment_method, sale.note, sale.payment_image, createdAt);
 
       const itemStmt = db.prepare(`
         INSERT INTO sale_items (id, sale_id, product_id, product_name, unit_price, quantity, line_total)

@@ -388,7 +388,7 @@ function ApptDialog({ products, clients, defaultDay, userId, onSaved }: {
       toast.error("Client et prestation requis");
       return;
     }
-    const startsAt = new Date(`${date}T${time}:00`).toISOString();
+    const startsAt = `${date}T${time}:00`;
     try {
       await createAppointmentAction({
         data: {
@@ -469,7 +469,7 @@ function EditApptDialog({ appt, products, userId, onSaved, onDelete }: {
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (!clientName) { toast.error("Nom du client requis"); return; }
-    const startsAt = new Date(`${date}T${time}:00`).toISOString();
+    const startsAt = `${date}T${time}:00`;
     try {
       await updateAppointmentAction({
         data: {
