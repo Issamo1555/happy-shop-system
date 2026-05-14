@@ -5,7 +5,7 @@ import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { ChevronLeft, ChevronRight, Receipt as ReceiptIcon, FileDown, Edit2, Camera, ImageIcon, X, Save } from "lucide-react";
+import { ChevronLeft, ChevronRight, Receipt as ReceiptIcon, FileDown, Edit2, Camera, ImageIcon, X, Save, Search } from "lucide-react";
 import { addDays, format, startOfDay } from "date-fns";
 import { fr } from "date-fns/locale";
 import { formatDhs } from "@/lib/format";
@@ -69,6 +69,10 @@ function HistoryPage() {
   const [editMethod, setEditMethod] = useState<Sale["payment_method"]>("cash");
   const [editNote, setEditNote] = useState("");
   const [editImage, setEditImage] = useState<string | null>(null);
+
+  const [methodFilter, setMethodFilter] = useState<string>("all");
+  const [minAmount, setMinAmount] = useState("");
+  const [maxAmount, setMaxAmount] = useState("");
 
   const load = async () => {
     const dayStr = format(day, "yyyy-MM-dd");
@@ -145,26 +149,32 @@ function HistoryPage() {
     toast.success("Historique exporté");
   };
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return sales;
-    return sales.filter((s) =>
-      `${s.clients?.first_name ?? ""} ${s.clients?.last_name ?? ""} ${s.note ?? ""}`
-        .toLowerCase().includes(q)
-    );
-  }, [sales, search]);
+  const filteredSales = useMemo(() => {
+    return sales.filter(s => {
+      const q = search.trim().toLowerCase();
+      const matchSearch = !q || (
+        (s.clients?.first_name + " " + (s.clients?.last_name || "")).toLowerCase().includes(q) ||
+        (s.note || "").toLowerCase().includes(q) ||
+        s.id.toLowerCase().includes(q)
+      );
+      const matchMethod = methodFilter === "all" || s.payment_method === methodFilter;
+      const matchMin = !minAmount || s.total >= Number(minAmount);
+      const matchMax = !maxAmount || s.total <= Number(maxAmount);
+      return matchSearch && matchMethod && matchMin && matchMax;
+    });
+  }, [sales, search, methodFilter, minAmount, maxAmount]);
 
-  const totalPages = Math.ceil(filtered.length / itemsPerPage);
-  const paginatedSales = filtered.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+  const totalPages = Math.ceil(filteredSales.length / itemsPerPage);
+  const paginatedSales = filteredSales.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   const totals = useMemo(() => {
-    const total = sales.reduce((s, x) => s + Number(x.total), 0);
+    const total = filteredSales.reduce((s, x) => s + Number(x.total), 0);
     const byMethod: Record<string, number> = {};
-    sales.forEach((s) => {
+    filteredSales.forEach((s) => {
       byMethod[s.payment_method] = (byMethod[s.payment_method] ?? 0) + Number(s.total);
     });
-    return { total, count: sales.length, byMethod };
-  }, [sales]);
+    return { total, count: filteredSales.length, byMethod };
+  }, [filteredSales]);
 
   return (
     <div className="space-y-4">
@@ -189,7 +199,44 @@ function HistoryPage() {
           <Button size="icon" variant="ghost" onClick={() => setDay((d) => addDays(d, 1))}><ChevronRight className="w-4 h-4" /></Button>
           <Button size="sm" variant="ghost" onClick={() => setDay(startOfDay(new Date()))}>Aujourd'hui</Button>
         </div>
-        <Input placeholder="Rechercher..." value={search} onChange={(e) => { setSearch(e.target.value); setCurrentPage(1); }} className="w-56" />
+      </div>
+
+      {/* FILTER BAR */}
+      <div className="bg-muted/30 p-4 rounded-xl border border-border/50 grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+        <div className="space-y-1.5">
+          <label className="text-[10px] uppercase font-bold text-muted-foreground">Recherche</label>
+          <div className="relative">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input placeholder="Client, note, ticket ID..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 h-9" />
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-[10px] uppercase font-bold text-muted-foreground">Mode de paiement</label>
+          <select 
+            value={methodFilter} 
+            onChange={e => setMethodFilter(e.target.value)}
+            className="w-full h-9 px-3 rounded-md border border-input bg-background text-xs focus:ring-2 focus:ring-primary/20"
+          >
+            <option value="all">Tous les modes</option>
+            {Object.entries(PAY_LABELS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+          </select>
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-[10px] uppercase font-bold text-muted-foreground">Montant Min/Max (DHS)</label>
+          <div className="flex gap-2">
+            <Input type="number" placeholder="Min" value={minAmount} onChange={e => setMinAmount(e.target.value)} className="h-9" />
+            <Input type="number" placeholder="Max" value={maxAmount} onChange={e => setMaxAmount(e.target.value)} className="h-9" />
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <Button 
+            variant="outline" 
+            className="flex-1 text-xs h-9" 
+            onClick={() => { setSearch(""); setMethodFilter("all"); setMinAmount(""); setMaxAmount(""); }}
+          >
+            Effacer les filtres
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
