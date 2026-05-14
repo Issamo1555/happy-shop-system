@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AppSettingsRouteImport } from './routes/_app.settings'
 import { Route as AppHistoriqueRouteImport } from './routes/_app.historique'
 import { Route as AppDbAdminRouteImport } from './routes/_app.db-admin'
 import { Route as AppClientsRouteImport } from './routes/_app.clients'
@@ -32,6 +33,11 @@ const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AppSettingsRoute = AppSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => AppRoute,
 } as any)
 const AppHistoriqueRoute = AppHistoriqueRouteImport.update({
   id: '/historique',
@@ -73,6 +79,7 @@ export interface FileRoutesByFullPath {
   '/clients': typeof AppClientsRoute
   '/db-admin': typeof AppDbAdminRoute
   '/historique': typeof AppHistoriqueRoute
+  '/settings': typeof AppSettingsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -83,6 +90,7 @@ export interface FileRoutesByTo {
   '/clients': typeof AppClientsRoute
   '/db-admin': typeof AppDbAdminRoute
   '/historique': typeof AppHistoriqueRoute
+  '/settings': typeof AppSettingsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -95,6 +103,7 @@ export interface FileRoutesById {
   '/_app/clients': typeof AppClientsRoute
   '/_app/db-admin': typeof AppDbAdminRoute
   '/_app/historique': typeof AppHistoriqueRoute
+  '/_app/settings': typeof AppSettingsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -107,6 +116,7 @@ export interface FileRouteTypes {
     | '/clients'
     | '/db-admin'
     | '/historique'
+    | '/settings'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -117,6 +127,7 @@ export interface FileRouteTypes {
     | '/clients'
     | '/db-admin'
     | '/historique'
+    | '/settings'
   id:
     | '__root__'
     | '/'
@@ -128,6 +139,7 @@ export interface FileRouteTypes {
     | '/_app/clients'
     | '/_app/db-admin'
     | '/_app/historique'
+    | '/_app/settings'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -158,6 +170,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_app/settings': {
+      id: '/_app/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof AppSettingsRouteImport
+      parentRoute: typeof AppRoute
     }
     '/_app/historique': {
       id: '/_app/historique'
@@ -211,6 +230,7 @@ interface AppRouteChildren {
   AppClientsRoute: typeof AppClientsRoute
   AppDbAdminRoute: typeof AppDbAdminRoute
   AppHistoriqueRoute: typeof AppHistoriqueRoute
+  AppSettingsRoute: typeof AppSettingsRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -220,6 +240,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppClientsRoute: AppClientsRoute,
   AppDbAdminRoute: AppDbAdminRoute,
   AppHistoriqueRoute: AppHistoriqueRoute,
+  AppSettingsRoute: AppSettingsRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

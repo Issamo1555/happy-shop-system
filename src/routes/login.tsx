@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import logo from "@/assets/logo.png";
 import bg from "@/assets/login-bg.png";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 
 export const Route = createFileRoute("/login")({
   component: LoginPage,
@@ -20,6 +21,12 @@ function LoginPage() {
   const [name, setName] = useState("");
   const [inviteCode, setInviteCode] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [showResetDialog, setShowResetDialog] = useState(false);
+  const [resetEmail, setResetEmail] = useState("");
+  const [resetCode, setResetCode] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [isResetting, setIsResetting] = useState(false);
+  const { resetPassword } = useAuth();
 
   if (!loading && isAuthenticated) {
     return <Navigate to="/caisse" />;
@@ -108,6 +115,78 @@ function LoginPage() {
                 <Button type="submit" disabled={submitting} className="w-full h-12 text-base shadow-lg shadow-primary/20">
                   {submitting ? "Connexion..." : "Se connecter"}
                 </Button>
+                
+                <div className="text-center mt-2">
+                  <Dialog open={showResetDialog} onOpenChange={setShowResetDialog}>
+                    <DialogTrigger asChild>
+                      <Button variant="link" size="sm" className="text-primary/70 hover:text-primary text-xs">
+                        Mot de passe oublié ?
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="sm:max-w-md bg-white/95 backdrop-blur-md">
+                      <DialogHeader>
+                        <DialogTitle>Réinitialiser le mot de passe</DialogTitle>
+                      </DialogHeader>
+                      <div className="space-y-4 py-4">
+                        <div className="space-y-1">
+                          <Label htmlFor="reset-email">Votre Email</Label>
+                          <Input 
+                            id="reset-email" 
+                            type="email" 
+                            placeholder="email@example.com"
+                            value={resetEmail} 
+                            onChange={(e) => setResetEmail(e.target.value)} 
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label htmlFor="reset-code">Code d'invitation (MUMS...)</Label>
+                          <Input 
+                            id="reset-code" 
+                            placeholder="Code requis pour réinitialiser"
+                            value={resetCode} 
+                            onChange={(e) => setResetCode(e.target.value)} 
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label htmlFor="new-password">Nouveau mot de passe</Label>
+                          <Input 
+                            id="new-password" 
+                            type="password" 
+                            placeholder="6 caractères min."
+                            value={newPassword} 
+                            onChange={(e) => setNewPassword(e.target.value)} 
+                          />
+                        </div>
+                      </div>
+                      <DialogFooter>
+                        <Button 
+                          onClick={async () => {
+                            if (!resetEmail || !resetCode || !newPassword) {
+                              toast.error("Veuillez remplir tous les champs");
+                              return;
+                            }
+                            setIsResetting(true);
+                            try {
+                              await resetPassword(resetEmail, resetCode, newPassword);
+                              toast.success("Mot de passe mis à jour !");
+                              setShowResetDialog(false);
+                              setResetCode("");
+                              setNewPassword("");
+                            } catch (err: any) {
+                              toast.error(err.message);
+                            } finally {
+                              setIsResetting(false);
+                            }
+                          }}
+                          disabled={isResetting}
+                          className="w-full"
+                        >
+                          {isResetting ? "Mise à jour..." : "Confirmer le changement"}
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+                </div>
               </form>
             </TabsContent>
 

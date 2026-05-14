@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState, type FormEvent } from "react";
-import { getClientsAction, createClientAction, updateClientAction, deleteClientAction, getClientPacksAction, consumePackSessionAction } from "@/lib/actions";
+import { getClientsAction, createClientAction, updateClientAction, deleteClientAction, getClientPacksAction, consumePackSessionAction, toggleClientActiveAction } from "@/lib/actions";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,6 +32,7 @@ interface Client {
   is_member: boolean;
   children_count: number;
   notes: string | null;
+  active: boolean;
 }
 
 interface Pack {
@@ -85,6 +86,15 @@ function ClientsPage() {
     if (selectedClient) openClient(selectedClient);
     toast.success("Séance décomptée");
   };
+  
+  const handleToggleActive = async (id: string, active: boolean) => {
+    try {
+      await toggleClientActiveAction({ data: { id, active, userId: user?.id } });
+      load();
+    } catch (err) {
+      toast.error("Erreur lors du changement d'état");
+    }
+  };
 
   const handleDelete = async (id: string) => {
     if (!window.confirm("Voulez-vous vraiment supprimer ce client ?")) return;
@@ -131,7 +141,19 @@ function ClientsPage() {
                   <p className="text-xs text-muted-foreground">{c.children_count} enfant(s)</p>
                 )}
               </div>
-              {c.is_member && <Badge className="bg-primary-soft text-primary">Adhérent</Badge>}
+              <div className="flex flex-col items-end gap-2">
+                {c.is_member && <Badge className="bg-primary-soft text-primary">Adhérent</Badge>}
+                <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                  <Switch 
+                    checked={c.active !== false} 
+                    onCheckedChange={(checked) => handleToggleActive(c.id, checked)}
+                    className="scale-75"
+                  />
+                  <span className="text-[10px] text-muted-foreground uppercase">
+                    {c.active !== false ? "Actif" : "Inactif"}
+                  </span>
+                </div>
+              </div>
             </div>
             <div className="text-xs text-muted-foreground space-y-1">
               {c.phone && <div className="flex items-center gap-1"><Phone className="w-3 h-3" />{c.phone}</div>}
@@ -245,6 +267,7 @@ function ClientDialog({ client, userId, onSaved }: { client: Client | null; user
   const [member, setMember] = useState(client?.is_member ?? false);
   const [children, setChildren] = useState(client?.children_count ?? 0);
   const [notes, setNotes] = useState(client?.notes ?? "");
+  const [active, setActive] = useState(client?.active ?? true);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -256,6 +279,7 @@ function ClientDialog({ client, userId, onSaved }: { client: Client | null; user
       is_member: member,
       children_count: children,
       notes: notes || null,
+      active: active,
     };
     try {
       if (client) {
@@ -291,6 +315,12 @@ function ClientDialog({ client, userId, onSaved }: { client: Client | null; user
             <Switch checked={member} onCheckedChange={setMember} id="m" />
             <Label htmlFor="m">Adhérent réseau</Label>
           </div>
+          <div className="flex items-center gap-3 pt-6">
+            <Switch checked={active} onCheckedChange={setActive} id="a" />
+            <Label htmlFor="a">Compte Actif</Label>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
           <div><Label>Nombre d'enfants</Label><Input type="number" min={0} value={children} onChange={(e) => setChildren(Number(e.target.value) || 0)} /></div>
         </div>
         <div><Label>Notes</Label><Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} /></div>

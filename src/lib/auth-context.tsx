@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { loginAction, signUpAction, validateSessionAction } from "./actions";
+import { loginAction, signUpAction, validateSessionAction, resetPasswordAction, updateUserProfileAction, uploadAvatarAction } from "./actions";
 
 export type AppRole = "admin" | "cashier";
 
@@ -12,7 +12,9 @@ interface AuthState {
   isStaff: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, fullName: string, inviteCode: string) => Promise<void>;
-  signOut: () => Promise<void>;
+  resetPassword: (email: string, inviteCode: string, newPassword: string) => Promise<void>;
+  updateProfile: (email: string, fullName: string, avatarUrl: string) => Promise<void>;
+  uploadAvatar: (file: File) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -71,6 +73,50 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem("pos_user");
   };
 
+  const resetPassword = async (email: string, inviteCode: string, newPassword: string) => {
+    try {
+      await resetPasswordAction({ data: { email, inviteCode, newPassword } });
+    } catch (err: any) {
+      throw new Error(err.message || "Erreur lors de la réinitialisation");
+    }
+  };
+
+  const updateProfile = async (email: string, fullName: string, avatarUrl: string) => {
+    if (!user) return;
+    try {
+      const updatedUser = await updateUserProfileAction({ data: { userId: user.id, email, full_name: fullName, avatar_url: avatarUrl } });
+      setUser(updatedUser);
+      localStorage.setItem("pos_user", JSON.stringify(updatedUser));
+    } catch (err: any) {
+      throw new Error(err.message || "Erreur lors de la mise à jour du profil");
+    }
+  };
+
+  const uploadAvatar = async (file: File) => {
+    if (!user) return;
+    try {
+      // Convert file to base64
+      const reader = new FileReader();
+      const base64Promise = new Promise<string>((resolve) => {
+        reader.onload = () => resolve(reader.result as string);
+        reader.readAsDataURL(file);
+      });
+      const base64 = await base64Promise;
+      
+      const updatedUser = await uploadAvatarAction({ 
+        data: { 
+          userId: user.id, 
+          base64, 
+          filename: file.name 
+        } 
+      });
+      setUser(updatedUser);
+      localStorage.setItem("pos_user", JSON.stringify(updatedUser));
+    } catch (err: any) {
+      throw new Error(err.message || "Erreur lors du téléchargement de l'image");
+    }
+  };
+
   // Role is now always from server validation, not localStorage
   const roles = user ? [user.role as AppRole] : [];
 
@@ -84,6 +130,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     signIn,
     signUp,
     signOut,
+    resetPassword,
+    updateProfile,
+    uploadAvatar,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

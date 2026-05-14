@@ -141,6 +141,7 @@ export const initServerDb = async () => {
       is_member BOOLEAN NOT NULL DEFAULT 0,
       children_count INTEGER NOT NULL DEFAULT 0,
       notes TEXT,
+      active BOOLEAN NOT NULL DEFAULT 1,
       deleted TINYINT(1) DEFAULT 0,
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -194,7 +195,21 @@ export const initServerDb = async () => {
       password VARCHAR(255) NOT NULL,
       full_name VARCHAR(255),
       role VARCHAR(20) NOT NULL DEFAULT 'cashier',
+      avatar_url TEXT,
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS categories (
+      id VARCHAR(50) PRIMARY KEY,
+      name VARCHAR(100) NOT NULL,
+      slug VARCHAR(100) NOT NULL UNIQUE,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      active BOOLEAN NOT NULL DEFAULT 1,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS settings (
+      key VARCHAR(100) PRIMARY KEY,
+      value TEXT,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
     )`
   ] : [
     // SQLite Schema (existing one)
@@ -247,6 +262,7 @@ export const initServerDb = async () => {
         is_member BOOLEAN NOT NULL DEFAULT 0,
         children_count INTEGER NOT NULL DEFAULT 0,
         notes TEXT,
+        active BOOLEAN NOT NULL DEFAULT 1,
         deleted INTEGER DEFAULT 0,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -300,7 +316,21 @@ export const initServerDb = async () => {
         password TEXT NOT NULL,
         full_name TEXT,
         role TEXT NOT NULL DEFAULT 'cashier',
+        avatar_url TEXT,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE TABLE IF NOT EXISTS categories (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        slug TEXT NOT NULL UNIQUE,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        active BOOLEAN NOT NULL DEFAULT 1,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
     `);
   }
@@ -318,6 +348,25 @@ export const initServerDb = async () => {
   } else if (!admin.password.startsWith("$2")) {
     const hashedPassword = bcrypt.hashSync(admin.password, 10);
     await db.execute("UPDATE users SET password = ? WHERE id = ?", [hashedPassword, admin.id]);
+  }
+
+  // Seed default settings
+  const defaults = {
+    "center_name": "CENTRE DE BIEN-ÊTRE & ACCOMPAGNEMENT",
+    "center_address": "CASABLANCA, MAROC",
+    "center_phone": "+212 6 XX XX XX XX",
+    "center_email": "contact@mums.home",
+    "member_discount_percent": "10",
+    "google_calendar_id": "",
+    "google_client_email": "",
+    "google_private_key": "",
+  };
+
+  for (const [key, value] of Object.entries(defaults)) {
+    const existing = await db.queryOne("SELECT key FROM settings WHERE key = ?", [key]);
+    if (!existing) {
+      await db.execute("INSERT INTO settings (key, value) VALUES (?, ?)", [key, value]);
+    }
   }
 };
 
