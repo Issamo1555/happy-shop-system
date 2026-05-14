@@ -447,14 +447,24 @@ export const updateSalePaymentAction = createServerFn({ method: "POST" })
   });
 
 export const getSalesAction = createServerFn({ method: "GET" })
-  .handler(async ({ data }: { data: string }) => {
-    return await db.prepare(`
-      SELECT s.*, c.first_name, c.last_name 
-      FROM sales s 
-      LEFT JOIN clients c ON s.client_id = c.id 
-      WHERE date(s.created_at) = ? 
-      ORDER BY s.created_at DESC
-    `).all(data);
+  .handler(async ({ data }: { data: string | { start: string, end: string } }) => {
+    if (typeof data === "string") {
+      return await db.prepare(`
+        SELECT s.*, c.first_name, c.last_name, c.type as client_type, c.company_name, c.company_ice 
+        FROM sales s 
+        LEFT JOIN clients c ON s.client_id = c.id 
+        WHERE date(s.created_at) = ? 
+        ORDER BY s.created_at DESC
+      `).all(data);
+    } else {
+      return await db.prepare(`
+        SELECT s.*, c.first_name, c.last_name, c.type as client_type, c.company_name, c.company_ice 
+        FROM sales s 
+        LEFT JOIN clients c ON s.client_id = c.id 
+        WHERE date(s.created_at) BETWEEN ? AND ?
+        ORDER BY s.created_at DESC
+      `).all(data.start, data.end);
+    }
   });
 
 export const getSaleItemsAction = createServerFn({ method: "GET" })
