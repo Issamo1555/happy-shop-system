@@ -17,6 +17,7 @@ if (isMySQL) {
     user: process.env.MYSQL_USER || "root",
     password: process.env.MYSQL_PASSWORD || "",
     database: process.env.MYSQL_DATABASE || "mums_home_pos",
+    socketPath: process.env.MYSQL_SOCKET || undefined,
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0
@@ -44,7 +45,14 @@ export const db = {
   async query(sql: string, params: any[] = []): Promise<any[]> {
     if (isMySQL && mysqlPool) {
       const [rows] = await mysqlPool.execute(sql, params);
-      return rows as any[];
+      // Convert 1/0 to true/false for boolean fields and ensure serializable
+      const cleanRows = JSON.parse(JSON.stringify(rows, (key, value) => {
+        if (typeof value === 'number' && (key === 'active' || key === 'deleted' || key === 'is_member' || key === 'bookable')) {
+          return value === 1;
+        }
+        return value;
+      }));
+      return cleanRows as any[];
     } else {
       return sqliteDb.prepare(sql).all(...params);
     }
@@ -53,7 +61,14 @@ export const db = {
   async queryOne(sql: string, params: any[] = []): Promise<any> {
     if (isMySQL && mysqlPool) {
       const [rows] = await mysqlPool.execute(sql, params) as any[];
-      return rows[0] || null;
+      if (!rows[0]) return null;
+      const cleanRow = JSON.parse(JSON.stringify(rows[0], (key, value) => {
+        if (typeof value === 'number' && (key === 'active' || key === 'deleted' || key === 'is_member' || key === 'bookable')) {
+          return value === 1;
+        }
+        return value;
+      }));
+      return cleanRow;
     } else {
       return sqliteDb.prepare(sql).get(...params);
     }

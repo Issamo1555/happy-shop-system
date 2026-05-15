@@ -94,20 +94,24 @@ function CataloguePage() {
   const fetchAll = async () => {
     setLoading(true);
     try {
+      console.log("🌐 Frontend: Appel de fetchAll...");
       const [prodData, catData] = await Promise.all([
         getProductsAction(),
         getCategoriesAction()
       ]);
+      console.log("🌐 Frontend: Données reçues - Produits:", prodData?.length, "Catégories:", catData?.length);
       setProducts(prodData as Product[]);
-      setCategories(catData as Category[]);
+      setCategories(catData as Category[] || []);
       
       if (catData.length > 0 && !newProduct.category) {
         setNewProduct(prev => ({ ...prev, category: catData[0].slug }));
       }
     } catch (err) {
-      toast.error("Erreur lors du chargement des données");
+      console.error("❌ Erreur fetchAll:", err);
+      toast.error("Erreur de chargement des données");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   useEffect(() => {

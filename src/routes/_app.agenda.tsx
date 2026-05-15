@@ -74,16 +74,24 @@ function AgendaPage() {
   };
 
   const load = async () => {
+    let data: any[] = [];
     if (view === "day") {
       const dayStr = format(day, "yyyy-MM-dd");
-      const data = await getAppointmentsAction({ data: dayStr });
-      setAppts(data as unknown as Appt[]);
+      data = await getAppointmentsAction({ data: dayStr }) as any[];
     } else {
       const start = view === "week" ? startOfWeek(day, { weekStartsOn: 1 }) : startOfMonth(day);
       const end = view === "week" ? endOfWeek(day, { weekStartsOn: 1 }) : endOfMonth(day);
-      const data = await getAppointmentsRangeAction({ data: { from: format(start, "yyyy-MM-dd"), to: format(end, "yyyy-MM-dd") } });
-      setAppts(data as unknown as Appt[]);
+      data = await getAppointmentsRangeAction({ data: { from: format(start, "yyyy-MM-dd"), to: format(end, "yyyy-MM-dd") } }) as any[];
     }
+
+    // Filter out exact duplicates (same name, same time)
+    const unique = data.reduce((acc: Appt[], current: Appt) => {
+      const x = acc.find(item => item.starts_at === current.starts_at && item.client_name === current.client_name);
+      if (!x) return acc.concat([current]);
+      return acc;
+    }, []);
+
+    setAppts(unique);
   };
 
   useEffect(() => {
@@ -373,6 +381,7 @@ function ApptDialog({ products, clients, defaultDay, userId, onSaved }: {
   const [time, setTime] = useState("10:00");
   const [duration, setDuration] = useState(60);
   const [notes, setNotes] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     const p = products.find((x) => x.id === productId);
@@ -381,6 +390,8 @@ function ApptDialog({ products, clients, defaultDay, userId, onSaved }: {
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
+    
     const product = products.find((p) => p.id === productId);
     const client = clients.find((c) => c.id === clientId);
     const clientName = client ? `${client.first_name} ${client.last_name ?? ""}`.trim() : manualName;
@@ -389,6 +400,7 @@ function ApptDialog({ products, clients, defaultDay, userId, onSaved }: {
       return;
     }
     const startsAt = `${date}T${time}:00`;
+    setSubmitting(true);
     try {
       await createAppointmentAction({
         data: {
@@ -407,6 +419,8 @@ function ApptDialog({ products, clients, defaultDay, userId, onSaved }: {
     } catch (err: any) {
       console.error("Erreur création RDV:", err);
       toast.error("Erreur: " + (err?.message || "Impossible de créer le RDV"));
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -448,7 +462,11 @@ function ApptDialog({ products, clients, defaultDay, userId, onSaved }: {
           <div><Label>Durée (min)</Label><Input type="number" min={15} step={15} value={duration} onChange={(e) => setDuration(Number(e.target.value) || 60)} /></div>
         </div>
         <div><Label>Notes</Label><Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} /></div>
-        <DialogFooter><Button type="submit">Créer le RDV</Button></DialogFooter>
+        <DialogFooter>
+          <Button type="submit" disabled={submitting}>
+            {submitting ? "Création..." : "Créer le RDV"}
+          </Button>
+        </DialogFooter>
       </form>
     </DialogContent>
   );

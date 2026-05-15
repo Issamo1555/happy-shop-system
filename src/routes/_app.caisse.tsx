@@ -74,20 +74,28 @@ function CaissePage() {
 
   useEffect(() => {
     (async () => {
-      const [prods, cls, sett, cats] = await Promise.all([
-        getProductsAction(),
-        getClientsAction(),
-        getSettingsAction(),
-        getCategoriesAction()
-      ]);
-      setProducts(prods as unknown as Product[]);
-      setClients(cls as unknown as Client[]);
-      setSettings(sett as Record<string, string>);
-      setDbCategories(cats as any[]);
-      if (cats && (cats as any[]).length > 0) {
-        setActiveCat((cats as any[])[0].slug);
+      try {
+        const [prods, cls, sett, cats] = await Promise.all([
+          getProductsAction(),
+          getClientsAction(),
+          getSettingsAction(),
+          getCategoriesAction()
+        ]);
+        
+        const prodList = prods as unknown as Product[];
+        const catList = cats as any[];
+        
+        setProducts(prodList);
+        setClients(cls as unknown as Client[]);
+        setSettings(sett as Record<string, string>);
+        setDbCategories(catList);
+        
+        if (catList && catList.length > 0) {
+          setActiveCat(catList[0].slug);
+        }
+      } catch (err: any) {
+        console.error("Erreur de chargement Caisse:", err);
       }
-      console.log("Caisse loaded settings:", sett);
     })();
   }, []);
 
@@ -129,15 +137,40 @@ function CaissePage() {
 
   const changeToReturn = Math.max(0, cashReceived - total);
 
+  const categoriesPresent = useMemo(() => {
+    // 1. Start with default categories from code
+    const baseCats = CATEGORY_ORDER.map(c => ({ 
+      slug: c, 
+      name: CATEGORY_LABELS[c] || c 
+    }));
+
+    // 2. Add custom categories from DB (avoiding duplicates)
+    const fromDb = Array.isArray(dbCategories) ? dbCategories : [];
+    const customCats = fromDb.filter(dbCat => !CATEGORY_ORDER.includes(dbCat.slug));
+
+    return [...baseCats, ...customCats];
+  }, [dbCategories]);
+
+  // Set initial category if not set or invalid
+  useEffect(() => {
+    const isValid = categoriesPresent.some(c => c.slug === activeCat);
+    if ((!activeCat || !isValid) && categoriesPresent.length > 0) {
+      setActiveCat(categoriesPresent[0].slug);
+    }
+  }, [categoriesPresent, activeCat]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
+    
     return products.filter((p) => {
+      // 1. Search filter
       if (q) return p.name.toLowerCase().includes(q);
+      
+      // 2. Category filter - if no activeCat, show everything or first cat
+      if (!activeCat) return true; 
       return p.category === activeCat;
     });
   }, [products, activeCat, search]);
-
-  const categoriesPresent = dbCategories.length > 0 ? dbCategories : CATEGORY_ORDER.map(c => ({ slug: c, name: CATEGORY_LABELS[c] }));
 
   const validateSale = async () => {
     if (!user) return;
