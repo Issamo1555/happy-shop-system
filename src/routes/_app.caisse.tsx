@@ -71,6 +71,9 @@ function CaissePage() {
   }>(null);
 
   const [numpadValue, setNumpadValue] = useState("0");
+  const [openQuantityPopoverId, setOpenQuantityPopoverId] = useState<string | null>(null);
+  const [discountPopoverOpen, setDiscountPopoverOpen] = useState(false);
+  const [cashPopoverOpen, setCashPopoverOpen] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -321,7 +324,10 @@ function CaissePage() {
                       <Minus className="w-3 h-3" />
                     </Button>
                     
-                    <Popover>
+                    <Popover 
+                      open={openQuantityPopoverId === i.productId} 
+                      onOpenChange={(open) => setOpenQuantityPopoverId(open ? i.productId : null)}
+                    >
                       <PopoverTrigger asChild>
                         <Button variant="ghost" className="h-7 w-8 p-0 text-sm font-medium">
                           {i.quantity}
@@ -333,6 +339,7 @@ function CaissePage() {
                           title="Quantité"
                           allowDecimal={false}
                           onChange={(v) => cart.setQty(i.productId, Number(v) || 1)} 
+                          onClose={() => setOpenQuantityPopoverId(null)}
                         />
                       </PopoverContent>
                     </Popover>
@@ -390,7 +397,7 @@ function CaissePage() {
                     onChange={(e) => setExtraDiscount(Number(e.target.value) || 0)}
                     className="flex-1"
                   />
-                  <Popover>
+                  <Popover open={discountPopoverOpen} onOpenChange={setDiscountPopoverOpen}>
                     <PopoverTrigger asChild>
                       <Button variant="outline" size="icon" className="shrink-0"><Calculator className="w-4 h-4" /></Button>
                     </PopoverTrigger>
@@ -399,6 +406,7 @@ function CaissePage() {
                         value={String(extraDiscount)} 
                         title="Remise"
                         onChange={(v) => setExtraDiscount(Number(v) || 0)} 
+                        onClose={() => setDiscountPopoverOpen(false)}
                       />
                     </PopoverContent>
                   </Popover>
@@ -415,7 +423,7 @@ function CaissePage() {
                 <div className="grid grid-cols-2 gap-3 items-center">
                   <div className="space-y-1">
                     <p className="text-[10px] uppercase text-muted-foreground">Reçu</p>
-                    <Popover>
+                    <Popover open={cashPopoverOpen} onOpenChange={setCashPopoverOpen}>
                       <PopoverTrigger asChild>
                         <Button variant="outline" className="w-full h-10 justify-start font-display text-lg">
                           {formatDhs(cashReceived)}
@@ -426,6 +434,7 @@ function CaissePage() {
                           value={String(cashReceived)} 
                           title="Montant Reçu"
                           onChange={(v) => setCashReceived(Number(v) || 0)} 
+                          onClose={() => setCashPopoverOpen(false)}
                         />
                       </PopoverContent>
                     </Popover>

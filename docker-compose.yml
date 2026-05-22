@@ -3,37 +3,44 @@ version: '3.8'
 services:
   app:
     build: .
-    container_name: mums-home-pos
+    container_name: posrdv-app
     restart: always
     ports:
-      - "3000:3000"
+      - "4000:3000"
     environment:
       - NODE_ENV=production
       - PORT=3000
       - MYSQL_HOST=db
       - MYSQL_PORT=3306
-      - MYSQL_USER=pos_user
-      - MYSQL_PASSWORD=pos_secure_password
-      - MYSQL_DATABASE=mums_home_pos
+      - MYSQL_USER=${MYSQL_USER:-pos_user}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-PosRdv2027!Secure}
+      - MYSQL_DATABASE=${MYSQL_DATABASE:-mums_home_pos}
       - GOOGLE_CLIENT_EMAIL=${GOOGLE_CLIENT_EMAIL}
       - GOOGLE_PRIVATE_KEY=${GOOGLE_PRIVATE_KEY}
       - GOOGLE_CALENDAR_ID=${GOOGLE_CALENDAR_ID}
     volumes:
       - ./data:/app/data
     depends_on:
-      - db
+      db:
+        condition: service_healthy
 
   db:
     image: mariadb:10.11
-    container_name: mums-home-db
+    container_name: posrdv-db
     restart: always
     environment:
-      - MYSQL_ROOT_PASSWORD=root_secure_password
-      - MYSQL_DATABASE=mums_home_pos
-      - MYSQL_USER=pos_user
-      - MYSQL_PASSWORD=pos_secure_password
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-RootPosRdv2027!}
+      - MYSQL_DATABASE=${MYSQL_DATABASE:-mums_home_pos}
+      - MYSQL_USER=${MYSQL_USER:-pos_user}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-PosRdv2027!Secure}
     volumes:
-      - mysql_data:/var/lib/mysql
+      - posrdv_mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
 volumes:
-  mysql_data:
+  posrdv_mysql_data:

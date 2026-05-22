@@ -22,6 +22,9 @@ COPY . .
 # Définir les variables d'environnement de build
 ENV NODE_ENV=production
 
+# Utiliser la config Vite sans Cloudflare pour Docker
+RUN cp vite.config.docker.ts vite.config.ts
+
 # Compiler l'application
 RUN npm run build
 
@@ -32,10 +35,12 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
 
-COPY --from=base /app/.output ./.output
+# Copier le build (TanStack Start output est dans dist/)
+COPY --from=base /app/dist ./dist
 COPY --from=base /app/package.json ./package.json
 COPY --from=base /app/node_modules ./node_modules
 COPY --from=base /app/public ./public
+COPY --from=base /app/server.mjs ./server.mjs
 
 # Dossier pour SQLite (si utilisé en secours)
 RUN mkdir -p /app/data
@@ -46,5 +51,5 @@ ENV PORT=3000
 
 EXPOSE 3000
 
-# Lancer l'application
-CMD ["node", ".output/server/index.mjs"]
+# Lancer l'application via le wrapper Node.js HTTP
+CMD ["node", "server.mjs"]
