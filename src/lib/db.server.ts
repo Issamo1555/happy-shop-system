@@ -220,7 +220,7 @@ export const initServerDb = async () => {
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
     )`,
     `CREATE TABLE IF NOT EXISTS settings (
-      key VARCHAR(100) PRIMARY KEY,
+      \`key\` VARCHAR(100) PRIMARY KEY,
       value TEXT,
       updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
     )`
@@ -341,7 +341,7 @@ export const initServerDb = async () => {
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
       CREATE TABLE IF NOT EXISTS settings (
-        key TEXT PRIMARY KEY,
+        \`key\` TEXT PRIMARY KEY,
         value TEXT,
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
@@ -387,9 +387,35 @@ export const initServerDb = async () => {
   };
 
   for (const [key, value] of Object.entries(defaults)) {
-    const existing = await db.queryOne("SELECT key FROM settings WHERE key = ?", [key]);
+    const existing = await db.queryOne("SELECT `key` FROM settings WHERE `key` = ?", [key]);
     if (!existing) {
-      await db.execute("INSERT INTO settings (key, value) VALUES (?, ?)", [key, value]);
+      await db.execute("INSERT INTO settings (`key`, value) VALUES (?, ?)", [key, value]);
+    }
+  }
+
+  // Seed default categories if empty
+  const categoryCount = await db.queryOne("SELECT COUNT(*) as count FROM categories");
+  const count = categoryCount ? (Number(categoryCount.count) || 0) : 0;
+  if (count === 0) {
+    console.log("🌱 Seeding default categories...");
+    const defaultCategories = [
+      { id: "cat-cafe", name: "Café & Boissons", slug: "cafe", sort_order: 1 },
+      { id: "cat-food", name: "Food Healthy", slug: "food", sort_order: 2 },
+      { id: "cat-periscolaire", name: "Périscolaire", slug: "periscolaire", sort_order: 3 },
+      { id: "cat-laep", name: "LAEP", slug: "laep", sort_order: 4 },
+      { id: "cat-pmi", name: "PMI / Pesée", slug: "pmi", sort_order: 5 },
+      { id: "cat-allaitement", name: "Allaitement", slug: "allaitement", sort_order: 6 },
+      { id: "cat-perinatal", name: "Périnatal", slug: "perinatal", sort_order: 7 },
+      { id: "cat-naissance", name: "Préparation naissance", slug: "naissance", sort_order: 8 },
+      { id: "cat-soin", name: "Soins & Rituels", slug: "soin", sort_order: 9 },
+      { id: "cat-accouchement", name: "Accouchement", slug: "accouchement", sort_order: 10 },
+      { id: "cat-atelier", name: "Ateliers", slug: "atelier", sort_order: 11 },
+    ];
+    for (const cat of defaultCategories) {
+      await db.execute(
+        "INSERT INTO categories (id, name, slug, sort_order, active) VALUES (?, ?, ?, ?, 1)",
+        [cat.id, cat.name, cat.slug, cat.sort_order]
+      );
     }
   }
 };

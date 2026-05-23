@@ -189,7 +189,7 @@ export const updateSettingsAction = createServerFn({ method: "POST" })
     await checkAdmin(data.adminId);
     console.log("Saving settings for admin:", data.adminId, data.settings);
     for (const [key, value] of Object.entries(data.settings)) {
-      await db.prepare("REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)")
+      await db.prepare("REPLACE INTO settings (`key`, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)")
         .run(key, value === null ? null : String(value));
     }
     return { success: true };
@@ -289,7 +289,7 @@ export const getAppointmentsRangeAction = createServerFn({ method: "GET" })
 
 // Helper to get Google Config for sync
 async function getGoogleConfig() {
-  const rows = await db.prepare("SELECT key, value FROM settings WHERE key LIKE 'google_%'").all() as any[];
+  const rows = await db.prepare("SELECT `key`, value FROM settings WHERE `key` LIKE 'google_%'").all() as any[];
   const s = Object.fromEntries(rows.map(r => [r.key, r.value]));
   return {
     clientEmail: s.google_client_email,
