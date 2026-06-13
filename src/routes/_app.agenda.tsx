@@ -84,14 +84,7 @@ function AgendaPage() {
       data = await getAppointmentsRangeAction({ data: { from: format(start, "yyyy-MM-dd"), to: format(end, "yyyy-MM-dd") } }) as any[];
     }
 
-    // Filter out exact duplicates (same name, same time)
-    const unique = data.reduce((acc: Appt[], current: Appt) => {
-      const x = acc.find(item => item.starts_at === current.starts_at && item.client_name === current.client_name);
-      if (!x) return acc.concat([current]);
-      return acc;
-    }, []);
-
-    setAppts(unique);
+    setAppts(data);
   };
 
   useEffect(() => {
