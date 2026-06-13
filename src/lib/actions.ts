@@ -255,20 +255,43 @@ export const deleteClientAction = createServerFn({ method: "POST" })
 
 export const getClientPacksAction = createServerFn({ method: "GET" })
   .handler(async ({ data }: { data: string }) => {
-    return await db.prepare(`
+    const packs = await db.prepare(`
       SELECT cp.*, p.name as product_name
       FROM client_packs cp
       LEFT JOIN products p ON cp.product_id = p.id
       WHERE cp.client_id = ?
       ORDER BY cp.purchased_at DESC
     `).all(data);
+    
+    for (const pack of packs) {
+      pack.consumptions = await db.prepare("SELECT * FROM pack_consumptions WHERE pack_id = ? ORDER BY consumed_at ASC").all(pack.id);
+    }
+    return packs;
   });
 
 export const consumePackSessionAction = createServerFn({ method: "POST" })
-  .handler(async ({ data }: { data: { packId: string, userId: string } }) => {
+  .handler(async ({ data }: { data: { packId: string, date: string, userId: string } }) => {
     await checkAuth(data.userId);
-    await db.prepare("UPDATE client_packs SET sessions_remaining = sessions_remaining - 1 WHERE id = ? AND sessions_remaining > 0")
-      .run(data.packId);
+    const transaction = db.transaction(async () => {
+      const pack = await db.prepare("SELECT sessions_remaining FROM client_packs WHERE id = ?").get(data.packId);
+      if (!pack || pack.sessions_remaining <= 0) throw new Error("Pack épuisé");
+      
+      await db.prepare("UPDATE client_packs SET sessions_remaining = sessions_remaining - 1 WHERE id = ?").run(data.packId);
+      await db.prepare("INSERT INTO pack_consumptions (id, pack_id, consumed_at) VALUES (?, ?, ?)")
+        .run(crypto.randomUUID(), data.packId, data.date);
+    });
+    await transaction();
+    return { success: true };
+  });
+
+export const unconsumePackSessionAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: { consumptionId: string, packId: string, userId: string } }) => {
+    await checkAuth(data.userId);
+    const transaction = db.transaction(async () => {
+      await db.prepare("DELETE FROM pack_consumptions WHERE id = ?").run(data.consumptionId);
+      await db.prepare("UPDATE client_packs SET sessions_remaining = sessions_remaining + 1 WHERE id = ?").run(data.packId);
+    });
+    await transaction();
     return { success: true };
   });
 
@@ -447,6 +470,16 @@ export const saveSaleAction = createServerFn({ method: "POST" })
       for (const item of items) {
         const itemId = item.id || crypto.randomUUID();
         await itemStmt.run(itemId, saleId, item.product_id, item.product_name, item.unit_price, item.quantity, item.line_total);
+
+        if (item.pack_sessions && item.pack_sessions > 0 && sale.client_id) {
+          for (let i = 0; i < item.quantity; i++) {
+            const packId = crypto.randomUUID();
+            await db.prepare(`
+              INSERT INTO client_packs (id, client_id, product_id, sessions_total, sessions_remaining, purchased_at)
+              VALUES (?, ?, ?, ?, ?, ?)
+            `).run(packId, sale.client_id, item.product_id, item.pack_sessions, item.pack_sessions, createdAt);
+          }
+        }
       }
     });
       await transaction();

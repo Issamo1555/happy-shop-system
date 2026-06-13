@@ -202,6 +202,11 @@ export const initServerDb = async () => {
       sessions_remaining INTEGER NOT NULL,
       purchased_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
     )`,
+    `CREATE TABLE IF NOT EXISTS pack_consumptions (
+      id VARCHAR(50) PRIMARY KEY,
+      pack_id VARCHAR(50) NOT NULL,
+      consumed_at DATETIME NOT NULL
+    )`,
     `CREATE TABLE IF NOT EXISTS users (
       id VARCHAR(50) PRIMARY KEY,
       email VARCHAR(255) UNIQUE NOT NULL,
@@ -322,6 +327,11 @@ export const initServerDb = async () => {
         sessions_total INTEGER NOT NULL,
         sessions_remaining INTEGER NOT NULL,
         purchased_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE TABLE IF NOT EXISTS pack_consumptions (
+        id TEXT PRIMARY KEY,
+        pack_id TEXT NOT NULL,
+        consumed_at DATETIME NOT NULL
       );
       CREATE TABLE IF NOT EXISTS users (
         id TEXT PRIMARY KEY,

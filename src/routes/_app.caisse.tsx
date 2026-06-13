@@ -204,7 +204,8 @@ function CaissePage() {
           product_name: i.name,
           unit_price: i.unitPrice,
           quantity: i.quantity,
-          line_total: i.unitPrice * i.quantity
+          line_total: i.unitPrice * i.quantity,
+          pack_sessions: i.packSessions
         }))
       };
 
