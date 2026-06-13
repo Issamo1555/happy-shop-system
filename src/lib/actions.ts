@@ -308,31 +308,6 @@ export const createAppointmentAction = createServerFn({ method: "POST" })
     const endDate = new Date(startDate.getTime() + duration * 60000);
     const endsAt = endDate.toISOString().replace('.000Z', '').replace('Z', '');
 
-    // Check for overlap
-    // Formula: (StartA < EndB) AND (EndA > StartB)
-    let overlapQuery = "";
-    if (process.env.MYSQL_HOST) {
-      overlapQuery = `
-        SELECT id FROM appointments 
-        WHERE (starts_at < ?) 
-        AND (DATE_ADD(starts_at, INTERVAL duration_min MINUTE) > ?)
-        AND status != 'cancelled'
-      `;
-    } else {
-      overlapQuery = `
-        SELECT id FROM appointments 
-        WHERE (starts_at < ?) 
-        AND (datetime(starts_at, '+' || duration_min || ' minutes') > ?)
-        AND status != 'cancelled'
-      `;
-    }
-
-    const overlaps = await db.query(overlapQuery, [endsAt, startsAt]);
-
-    if (overlaps && overlaps.length > 0) {
-      throw new Error("Ce créneau horaire est déjà occupé par un autre rendez-vous.");
-    }
-
     const createdAt = data.created_at || new Date().toLocaleString('sv-SE').replace(' ', 'T');
     
     const stmt = db.prepare(`
