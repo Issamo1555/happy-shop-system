@@ -261,9 +261,23 @@ function WeekView({ appts, day, onStatus, onDayClick, onEdit }: { appts: Appt[];
               </p>
             </button>
             <div className="flex-1 space-y-1 overflow-y-auto" style={{ maxHeight: "50vh" }}>
-              {dayAppts.map(a => (
-                <WeekApptCard key={a.id} appt={a} onEdit={onEdit} />
-              ))}
+              {(() => {
+                const map: Record<string, Appt[]> = {};
+                dayAppts.forEach(a => {
+                  if (!map[a.starts_at]) map[a.starts_at] = [];
+                  map[a.starts_at].push(a);
+                });
+                const grouped = Object.keys(map).sort().map(k => map[k]);
+                return grouped.map((group, idx) => (
+                  <div key={idx} className="flex flex-row gap-1">
+                    {group.map(a => (
+                      <div key={a.id} className="flex-1 min-w-0">
+                        <WeekApptCard appt={a} onEdit={onEdit} />
+                      </div>
+                    ))}
+                  </div>
+                ));
+              })()}
             </div>
           </div>
         );
