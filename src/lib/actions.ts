@@ -362,10 +362,11 @@ export const syncFromGoogleAction = createServerFn({ method: "POST" })
         const startDate = new Date(evt.starts_at);
         const endDate = new Date(evt.ends_at);
         const durationMin = Math.round((endDate.getTime() - startDate.getTime()) / 60000) || 60;
+        const mysqlStartsAt = evt.starts_at.includes('T') ? evt.starts_at.substring(0, 19) : evt.starts_at + " 00:00:00";
         await db.prepare(`
           INSERT INTO appointments (id, client_name, service_name, starts_at, duration_min, notes, google_event_id, status)
           VALUES (?, ?, ?, ?, ?, ?, ?, 'scheduled')
-        `).run(id, evt.summary, evt.summary, evt.starts_at, durationMin, evt.description, evt.google_event_id);
+        `).run(id, evt.summary, evt.summary, mysqlStartsAt, durationMin, evt.description, evt.google_event_id);
         imported++;
       }
     }
