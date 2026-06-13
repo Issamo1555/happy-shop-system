@@ -168,14 +168,15 @@ function HistoryPage() {
       })
     ];
     
+    // Add BOM for Excel UTF-8 compatibility
     const blob = new Blob(["\uFEFF" + csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    const fileName = `export_comptable_${format(startDate, "yyyy-MM-dd")}_au_${format(endDate, "yyyy-MM-dd")}.csv`;
+    const fileName = `export_excel_comptable_${format(startDate, "yyyy-MM-dd")}_au_${format(endDate, "yyyy-MM-dd")}.csv`;
     link.setAttribute('download', fileName);
     link.click();
-    toast.success("Rapport Excel exporté");
+    toast.success("Rapport Excel exporté avec succès");
   };
 
   const filteredSales = useMemo(() => {
