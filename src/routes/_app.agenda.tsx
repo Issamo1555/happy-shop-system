@@ -197,6 +197,15 @@ function AgendaPage() {
 
 /* ============================== DAY VIEW ============================== */
 function DayView({ appts, onStatus, onEdit, onDelete }: { appts: Appt[]; onStatus: (id: string, s: Appt["status"]) => void; onEdit: (a: Appt) => void; onDelete: (id: string) => void }) {
+  const grouped = useMemo(() => {
+    const map: Record<string, Appt[]> = {};
+    appts.forEach(a => {
+      if (!map[a.starts_at]) map[a.starts_at] = [];
+      map[a.starts_at].push(a);
+    });
+    return Object.keys(map).sort().map(k => map[k]);
+  }, [appts]);
+
   if (appts.length === 0) {
     return (
       <div className="pos-card p-12 text-center text-muted-foreground">
@@ -206,8 +215,16 @@ function DayView({ appts, onStatus, onEdit, onDelete }: { appts: Appt[]; onStatu
     );
   }
   return (
-    <div className="space-y-2">
-      {appts.map((a) => <ApptRow key={a.id} appt={a} onStatus={onStatus} onEdit={onEdit} onDelete={onDelete} />)}
+    <div className="space-y-3">
+      {grouped.map((group, idx) => (
+        <div key={idx} className="flex flex-col md:flex-row gap-2">
+          {group.map((a) => (
+            <div key={a.id} className="flex-1 min-w-0">
+              <ApptRow appt={a} onStatus={onStatus} onEdit={onEdit} onDelete={onDelete} />
+            </div>
+          ))}
+        </div>
+      ))}
     </div>
   );
 }
@@ -326,8 +343,8 @@ function MonthView({ appts, day, onDayClick }: { appts: Appt[]; day: Date; onDay
 function ApptRow({ appt, onStatus, onEdit, onDelete }: { appt: Appt; onStatus: (id: string, s: Appt["status"]) => void; onEdit: (a: Appt) => void; onDelete: (id: string) => void }) {
   const start = parseISO(appt.starts_at);
   return (
-    <div className="pos-card p-4 flex items-center gap-4">
-      <div className="flex-1 flex items-center gap-4 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => onEdit(appt)}>
+    <div className="pos-card p-4 flex flex-wrap items-center gap-4 h-full">
+      <div className="flex-1 min-w-[200px] flex items-center gap-4 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => onEdit(appt)}>
         <div className="text-center min-w-[64px]">
           <p className="font-display text-2xl text-primary leading-none">{format(start, "HH:mm")}</p>
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground mt-1 flex items-center justify-center gap-1">
