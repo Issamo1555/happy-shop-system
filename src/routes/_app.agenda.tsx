@@ -289,9 +289,13 @@ function WeekView({ appts, day, onStatus, onDayClick, onEdit }: { appts: Appt[];
 function WeekApptCard({ appt, onEdit }: { appt: Appt; onEdit: (a: Appt) => void }) {
   const start = parseISO(appt.starts_at);
   return (
-    <div onClick={() => onEdit(appt)} className={`rounded-md p-1.5 text-[11px] border cursor-pointer transition-all hover:shadow-md ${statusColor[appt.status]}`}>
-      <p className="font-semibold truncate">{format(start, "HH:mm")} {appt.client_name}</p>
-      <p className="truncate opacity-80">{appt.service_name}</p>
+    <div 
+      onClick={() => onEdit(appt)} 
+      title={`${format(start, "HH:mm")} - ${appt.client_name}\n${appt.service_name}`}
+      className={`rounded-md p-1 text-[10px] leading-tight border cursor-pointer transition-all hover:shadow-md ${statusColor[appt.status]}`}
+    >
+      <p className="font-semibold break-words">{format(start, "HH:mm")} <br className="hidden sm:block" />{appt.client_name}</p>
+      <p className="break-words opacity-80 mt-0.5">{appt.service_name}</p>
     </div>
   );
 }
