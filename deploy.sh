@@ -9,7 +9,7 @@ set -e
 
 # ---- CONFIGURATION ----
 REPO_URL="https://github.com/Issamo1555/happy-shop-system.git"
-BRANCH="feature/soft-delete-security"
+BRANCH="feature/tickets-system"
 APP_DIR="/opt/mums-home-pos"
 APP_PORT=8080
 
