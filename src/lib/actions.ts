@@ -527,6 +527,16 @@ export const getSaleItemsAction = createServerFn({ method: "GET" })
     return await db.prepare("SELECT * FROM sale_items WHERE sale_id = ?").all(data);
   });
 
+export const getClientSalesAction = createServerFn({ method: "GET" })
+  .handler(async ({ data }: { data: { clientId: string, userId: string } }) => {
+    await checkAuth(data.userId);
+    const sales = await db.prepare("SELECT * FROM sales WHERE client_id = ? ORDER BY created_at DESC").all(data.clientId) as any[];
+    for (const sale of sales) {
+      sale.items = await db.prepare("SELECT * FROM sale_items WHERE sale_id = ?").all(sale.id);
+    }
+    return sales;
+  });
+
 // ============================================
 // BACKUP & ADMIN (protected + SQL injection fix)
 // ============================================

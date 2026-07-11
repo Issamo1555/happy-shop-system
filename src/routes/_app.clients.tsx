@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState, type FormEvent } from "react";
-import { getClientsAction, createClientAction, updateClientAction, deleteClientAction, getClientPacksAction, consumePackSessionAction, unconsumePackSessionAction, toggleClientActiveAction } from "@/lib/actions";
+import { getClientsAction, createClientAction, updateClientAction, deleteClientAction, getClientPacksAction, consumePackSessionAction, unconsumePackSessionAction, toggleClientActiveAction, getClientSalesAction } from "@/lib/actions";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -59,6 +59,7 @@ function ClientsPage() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Client | null>(null);
   const [packs, setPacks] = useState<Pack[]>([]);
+  const [sales, setSales] = useState<any[]>([]);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
 
   const [currentPage, setCurrentPage] = useState(1);
@@ -74,8 +75,12 @@ function ClientsPage() {
 
   const openClient = async (c: Client) => {
     setSelectedClient(c);
-    const data = await getClientPacksAction({ data: c.id });
-    setPacks((data ?? []) as any);
+    const [packsData, salesData] = await Promise.all([
+      getClientPacksAction({ data: c.id }),
+      getClientSalesAction({ data: { clientId: c.id, userId: user?.id || "" } })
+    ]);
+    setPacks((packsData ?? []) as any);
+    setSales((salesData ?? []) as any);
   };
 
   const filtered = clients.filter((c) => {
@@ -327,6 +332,43 @@ function ClientsPage() {
                           </div>
                         );
                       })}
+                    </div>
+                  )}
+                </div>
+
+                <div className="border-t border-border pt-4">
+                  <h3 className="font-display text-lg text-primary mb-2">Historique des ventes / paiements</h3>
+                  {sales.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Aucun achat enregistré pour ce client.</p>
+                  ) : (
+                    <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                      {sales.map((sale) => (
+                        <div key={sale.id} className="p-3 rounded-xl bg-card border border-border flex justify-between items-center text-xs">
+                          <div>
+                            <p className="font-medium text-foreground">
+                              {new Date(sale.created_at).toLocaleDateString("fr-FR", {
+                                day: "numeric",
+                                month: "long",
+                                year: "numeric",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </p>
+                            <p className="text-[10px] text-muted-foreground mt-0.5">
+                              Paiement : <span className="font-medium text-foreground">{sale.payment_method}</span>
+                              {sale.note && ` | Obs : ${sale.note}`}
+                            </p>
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              {sale.items?.map((item: any) => (
+                                <span key={item.id} className="bg-primary/5 text-primary px-1.5 py-0.5 rounded text-[10px] border border-primary/10">
+                                  {item.product_name} (x{item.quantity})
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                          <p className="font-bold text-sm text-primary">{Number(sale.total).toFixed(2)} DH</p>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
