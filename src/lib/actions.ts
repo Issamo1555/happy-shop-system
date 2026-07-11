@@ -366,7 +366,8 @@ export const updateAppointmentStatusAction = createServerFn({ method: "POST" })
     
     // If cancelled or no-show, remove from Google Calendar
     if ((data.status === "cancelled" || data.status === "no_show") && appt.google_event_id) {
-      await deleteEventFromGoogle(appt.google_event_id);
+      const googleConfig = await getGoogleConfig();
+      await deleteEventFromGoogle(appt.google_event_id, googleConfig);
       await db.prepare("UPDATE appointments SET google_event_id = NULL WHERE id = ?").run(data.id);
     } 
     // If it was cancelled and now re-scheduled, we could re-sync, but for now we'll just handle deletion
@@ -376,7 +377,8 @@ export const updateAppointmentStatusAction = createServerFn({ method: "POST" })
 
 export const syncFromGoogleAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: { from: string; to: string } }) => {
-    const events = await pullEventsFromGoogle(data.from, data.to);
+    const googleConfig = await getGoogleConfig();
+    const events = await pullEventsFromGoogle(data.from, data.to, googleConfig);
     let imported = 0;
     for (const evt of events) {
       const existing = await db.prepare("SELECT id FROM appointments WHERE google_event_id = ?").get(evt.google_event_id) as any;
@@ -438,7 +440,8 @@ export const deleteAppointmentAction = createServerFn({ method: "POST" })
     const appt = await db.prepare("SELECT google_event_id FROM appointments WHERE id = ?").get(data.id) as any;
     
     if (appt?.google_event_id) {
-      await deleteEventFromGoogle(appt.google_event_id);
+      const googleConfig = await getGoogleConfig();
+      await deleteEventFromGoogle(appt.google_event_id, googleConfig);
     }
     
     await db.prepare("DELETE FROM appointments WHERE id = ?").run(data.id);
