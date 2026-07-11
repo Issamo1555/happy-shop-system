@@ -71,23 +71,34 @@ function CaissePage() {
   }>(null);
 
   const [numpadValue, setNumpadValue] = useState("0");
+  const [openQuantityPopoverId, setOpenQuantityPopoverId] = useState<string | null>(null);
+  const [discountPopoverOpen, setDiscountPopoverOpen] = useState(false);
+  const [cashPopoverOpen, setCashPopoverOpen] = useState(false);
 
   useEffect(() => {
     (async () => {
-      const [prods, cls, sett, cats] = await Promise.all([
-        getProductsAction(),
-        getClientsAction(),
-        getSettingsAction(),
-        getCategoriesAction()
-      ]);
-      setProducts(prods as unknown as Product[]);
-      setClients(cls as unknown as Client[]);
-      setSettings(sett as Record<string, string>);
-      setDbCategories(cats as any[]);
-      if (cats && (cats as any[]).length > 0) {
-        setActiveCat((cats as any[])[0].slug);
+      try {
+        const [prods, cls, sett, cats] = await Promise.all([
+          getProductsAction(),
+          getClientsAction(),
+          getSettingsAction(),
+          getCategoriesAction()
+        ]);
+        
+        const prodList = prods as unknown as Product[];
+        const catList = cats as any[];
+        
+        setProducts(prodList);
+        setClients(cls as unknown as Client[]);
+        setSettings(sett as Record<string, string>);
+        setDbCategories(catList);
+        
+        if (catList && catList.length > 0) {
+          setActiveCat(catList[0].slug);
+        }
+      } catch (err: any) {
+        console.error("Erreur de chargement Caisse:", err);
       }
-      console.log("Caisse loaded settings:", sett);
     })();
   }, []);
 
@@ -129,15 +140,40 @@ function CaissePage() {
 
   const changeToReturn = Math.max(0, cashReceived - total);
 
+  const categoriesPresent = useMemo(() => {
+    // 1. Start with default categories from code
+    const baseCats = CATEGORY_ORDER.map(c => ({ 
+      slug: c, 
+      name: CATEGORY_LABELS[c] || c 
+    }));
+
+    // 2. Add custom categories from DB (avoiding duplicates)
+    const fromDb = Array.isArray(dbCategories) ? dbCategories : [];
+    const customCats = fromDb.filter(dbCat => !CATEGORY_ORDER.includes(dbCat.slug));
+
+    return [...baseCats, ...customCats];
+  }, [dbCategories]);
+
+  // Set initial category if not set or invalid
+  useEffect(() => {
+    const isValid = categoriesPresent.some(c => c.slug === activeCat);
+    if ((!activeCat || !isValid) && categoriesPresent.length > 0) {
+      setActiveCat(categoriesPresent[0].slug);
+    }
+  }, [categoriesPresent, activeCat]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
+    
     return products.filter((p) => {
+      // 1. Search filter
       if (q) return p.name.toLowerCase().includes(q);
+      
+      // 2. Category filter - if no activeCat, show everything or first cat
+      if (!activeCat) return true; 
       return p.category === activeCat;
     });
   }, [products, activeCat, search]);
-
-  const categoriesPresent = dbCategories.length > 0 ? dbCategories : CATEGORY_ORDER.map(c => ({ slug: c, name: CATEGORY_LABELS[c] }));
 
   const validateSale = async () => {
     if (!user) return;
@@ -168,7 +204,8 @@ function CaissePage() {
           product_name: i.name,
           unit_price: i.unitPrice,
           quantity: i.quantity,
-          line_total: i.unitPrice * i.quantity
+          line_total: i.unitPrice * i.quantity,
+          pack_sessions: i.packSessions
         }))
       };
 
@@ -288,7 +325,10 @@ function CaissePage() {
                       <Minus className="w-3 h-3" />
                     </Button>
                     
-                    <Popover>
+                    <Popover 
+                      open={openQuantityPopoverId === i.productId} 
+                      onOpenChange={(open) => setOpenQuantityPopoverId(open ? i.productId : null)}
+                    >
                       <PopoverTrigger asChild>
                         <Button variant="ghost" className="h-7 w-8 p-0 text-sm font-medium">
                           {i.quantity}
@@ -300,6 +340,7 @@ function CaissePage() {
                           title="Quantité"
                           allowDecimal={false}
                           onChange={(v) => cart.setQty(i.productId, Number(v) || 1)} 
+                          onClose={() => setOpenQuantityPopoverId(null)}
                         />
                       </PopoverContent>
                     </Popover>
@@ -357,7 +398,7 @@ function CaissePage() {
                     onChange={(e) => setExtraDiscount(Number(e.target.value) || 0)}
                     className="flex-1"
                   />
-                  <Popover>
+                  <Popover open={discountPopoverOpen} onOpenChange={setDiscountPopoverOpen}>
                     <PopoverTrigger asChild>
                       <Button variant="outline" size="icon" className="shrink-0"><Calculator className="w-4 h-4" /></Button>
                     </PopoverTrigger>
@@ -366,6 +407,7 @@ function CaissePage() {
                         value={String(extraDiscount)} 
                         title="Remise"
                         onChange={(v) => setExtraDiscount(Number(v) || 0)} 
+                        onClose={() => setDiscountPopoverOpen(false)}
                       />
                     </PopoverContent>
                   </Popover>
@@ -382,7 +424,7 @@ function CaissePage() {
                 <div className="grid grid-cols-2 gap-3 items-center">
                   <div className="space-y-1">
                     <p className="text-[10px] uppercase text-muted-foreground">Reçu</p>
-                    <Popover>
+                    <Popover open={cashPopoverOpen} onOpenChange={setCashPopoverOpen}>
                       <PopoverTrigger asChild>
                         <Button variant="outline" className="w-full h-10 justify-start font-display text-lg">
                           {formatDhs(cashReceived)}
@@ -393,6 +435,7 @@ function CaissePage() {
                           value={String(cashReceived)} 
                           title="Montant Reçu"
                           onChange={(v) => setCashReceived(Number(v) || 0)} 
+                          onClose={() => setCashPopoverOpen(false)}
                         />
                       </PopoverContent>
                     </Popover>
@@ -493,9 +536,16 @@ function CaissePage() {
                 <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-sans">Parentalité & Co</p>
               </div>
               <div className="mt-4 text-[10px] text-muted-foreground uppercase tracking-wider space-y-0.5">
-                <p>{settings.center_name || "Centre de Bien-être & Accompagnement"}</p>
+                <p className="font-bold text-primary/80">{settings.center_name || "Mums'Home"}</p>
                 <p>{settings.center_address || "Casablanca, Maroc"}</p>
                 <p>Tél: {settings.center_phone || "+212 6 XX XX XX XX"}</p>
+                {(settings.center_ice || settings.center_if || settings.center_rc) && (
+                  <div className="flex flex-wrap justify-center gap-x-3 pt-1 border-t border-border/50 mt-1">
+                    {settings.center_ice && <span>ICE: {settings.center_ice}</span>}
+                    {settings.center_if && <span>IF: {settings.center_if}</span>}
+                    {settings.center_rc && <span>RC: {settings.center_rc}</span>}
+                  </div>
+                )}
               </div>
             </div>
 

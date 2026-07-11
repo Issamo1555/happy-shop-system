@@ -67,10 +67,13 @@ export function ZReportModal({ open, onOpenChange, day, sales, totals, settings 
             </div>
           </div>
           <div className="border-y border-dashed border-black py-2 my-4 text-center">
-            <p className="text-xs font-bold uppercase">RAPPORT Z - CLÔTURE</p>
-            <p className="text-xs mt-1">
-              Date : {format(day, "EEEE d MMMM yyyy", { locale: fr })}
-            </p>
+              <p className="text-[10px] uppercase">{settings.center_address || "Casablanca, Maroc"}</p>
+              <div className="flex flex-wrap justify-center gap-x-2 text-[9px] opacity-70 mt-1">
+                {settings.center_ice && <span>ICE: {settings.center_ice}</span>}
+                {settings.center_if && <span>IF: {settings.center_if}</span>}
+                {settings.center_rc && <span>RC: {settings.center_rc}</span>}
+              </div>
+              <p className="text-[10px] pt-1">Rapport de clôture du {format(day, "dd/MM/yyyy")}</p>
           </div>
 
           <div className="space-y-4">

@@ -4,28 +4,27 @@ import { join } from "path";
 import bcrypt from "bcryptjs";
 
 // Database Configuration
-const isMySQL = false; // Force SQLite as per user request
+const isMySQL = !!process.env.MYSQL_HOST;
 
 let sqliteDb: any = null;
 let mysqlPool: mysql.Pool | null = null;
 
 if (isMySQL) {
-  console.log("Using MySQL database (XAMPP/Remote)");
+  console.log("🚀 Using MySQL database (XAMPP/Remote)");
   mysqlPool = mysql.createPool({
     host: process.env.MYSQL_HOST,
     port: Number(process.env.MYSQL_PORT) || 3306,
     user: process.env.MYSQL_USER || "root",
     password: process.env.MYSQL_PASSWORD || "",
     database: process.env.MYSQL_DATABASE || "mums_home_pos",
+    socketPath: process.env.MYSQL_SOCKET || undefined,
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0
   });
 } else {
-  console.log("Using SQLite database (pos.db)");
-  const dbPath = process.env.NODE_ENV === "production"
-    ? join(process.cwd(), "data", "pos.db")
-    : join(process.cwd(), "pos.db");
+  console.log("📦 Using SQLite database (pos.db)");
+  const dbPath = join(process.cwd(), "pos.db");
   sqliteDb = new Database(dbPath);
   sqliteDb.pragma("journal_mode = WAL");
 }
@@ -46,7 +45,14 @@ export const db = {
   async query(sql: string, params: any[] = []): Promise<any[]> {
     if (isMySQL && mysqlPool) {
       const [rows] = await mysqlPool.execute(sql, params);
-      return rows as any[];
+      // Convert 1/0 to true/false for boolean fields and ensure serializable
+      const cleanRows = JSON.parse(JSON.stringify(rows, (key, value) => {
+        if (typeof value === 'number' && (key === 'active' || key === 'deleted' || key === 'is_member' || key === 'bookable')) {
+          return value === 1;
+        }
+        return value;
+      }));
+      return cleanRows as any[];
     } else {
       return sqliteDb.prepare(sql).all(...params);
     }
@@ -55,7 +61,14 @@ export const db = {
   async queryOne(sql: string, params: any[] = []): Promise<any> {
     if (isMySQL && mysqlPool) {
       const [rows] = await mysqlPool.execute(sql, params) as any[];
-      return rows[0] || null;
+      if (!rows[0]) return null;
+      const cleanRow = JSON.parse(JSON.stringify(rows[0], (key, value) => {
+        if (typeof value === 'number' && (key === 'active' || key === 'deleted' || key === 'is_member' || key === 'bookable')) {
+          return value === 1;
+        }
+        return value;
+      }));
+      return cleanRow;
     } else {
       return sqliteDb.prepare(sql).get(...params);
     }
@@ -189,6 +202,11 @@ export const initServerDb = async () => {
       sessions_remaining INTEGER NOT NULL,
       purchased_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
     )`,
+    `CREATE TABLE IF NOT EXISTS pack_consumptions (
+      id VARCHAR(50) PRIMARY KEY,
+      pack_id VARCHAR(50) NOT NULL,
+      consumed_at DATETIME NOT NULL
+    )`,
     `CREATE TABLE IF NOT EXISTS users (
       id VARCHAR(50) PRIMARY KEY,
       email VARCHAR(255) UNIQUE NOT NULL,
@@ -207,8 +225,20 @@ export const initServerDb = async () => {
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
     )`,
     `CREATE TABLE IF NOT EXISTS settings (
-      key VARCHAR(100) PRIMARY KEY,
+      \`key\` VARCHAR(100) PRIMARY KEY,
       value TEXT,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS tickets (
+      id VARCHAR(50) PRIMARY KEY,
+      user_id VARCHAR(50) NOT NULL,
+      user_name VARCHAR(255) NOT NULL,
+      type VARCHAR(50) NOT NULL,
+      title VARCHAR(255) NOT NULL,
+      description TEXT NOT NULL,
+      image_url TEXT,
+      status VARCHAR(20) NOT NULL DEFAULT 'open',
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
     )`
   ] : [
@@ -310,6 +340,11 @@ export const initServerDb = async () => {
         sessions_remaining INTEGER NOT NULL,
         purchased_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
+      CREATE TABLE IF NOT EXISTS pack_consumptions (
+        id TEXT PRIMARY KEY,
+        pack_id TEXT NOT NULL,
+        consumed_at DATETIME NOT NULL
+      );
       CREATE TABLE IF NOT EXISTS users (
         id TEXT PRIMARY KEY,
         email TEXT UNIQUE NOT NULL,
@@ -328,10 +363,28 @@ export const initServerDb = async () => {
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
       CREATE TABLE IF NOT EXISTS settings (
-        key TEXT PRIMARY KEY,
+        \`key\` TEXT PRIMARY KEY,
         value TEXT,
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
+      CREATE TABLE IF NOT EXISTS tickets (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        user_name TEXT NOT NULL,
+        type TEXT NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL,
+        image_url TEXT,
+        status TEXT NOT NULL DEFAULT 'open',
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- Index pour la performance
+      CREATE INDEX IF NOT EXISTS idx_sales_date ON sales(created_at);
+      CREATE INDEX IF NOT EXISTS idx_appt_date ON appointments(starts_at);
+      CREATE INDEX IF NOT EXISTS idx_prod_cat ON products(category);
+      CREATE INDEX IF NOT EXISTS idx_clients_name ON clients(last_name, first_name);
     `);
   }
 
@@ -360,12 +413,43 @@ export const initServerDb = async () => {
     "google_calendar_id": "",
     "google_client_email": "",
     "google_private_key": "",
+    "center_ice": "",
+    "center_if": "",
+    "center_rc": "",
+    "center_patente": "",
+    "tva_percent": "20",
   };
 
   for (const [key, value] of Object.entries(defaults)) {
-    const existing = await db.queryOne("SELECT key FROM settings WHERE key = ?", [key]);
+    const existing = await db.queryOne("SELECT `key` FROM settings WHERE `key` = ?", [key]);
     if (!existing) {
-      await db.execute("INSERT INTO settings (key, value) VALUES (?, ?)", [key, value]);
+      await db.execute("INSERT INTO settings (`key`, value) VALUES (?, ?)", [key, value]);
+    }
+  }
+
+  // Seed default categories if empty
+  const categoryCount = await db.queryOne("SELECT COUNT(*) as count FROM categories");
+  const count = categoryCount ? (Number(categoryCount.count) || 0) : 0;
+  if (count === 0) {
+    console.log("🌱 Seeding default categories...");
+    const defaultCategories = [
+      { id: "cat-cafe", name: "Café & Boissons", slug: "cafe", sort_order: 1 },
+      { id: "cat-food", name: "Food Healthy", slug: "food", sort_order: 2 },
+      { id: "cat-periscolaire", name: "Périscolaire", slug: "periscolaire", sort_order: 3 },
+      { id: "cat-laep", name: "LAEP", slug: "laep", sort_order: 4 },
+      { id: "cat-pmi", name: "PMI / Pesée", slug: "pmi", sort_order: 5 },
+      { id: "cat-allaitement", name: "Allaitement", slug: "allaitement", sort_order: 6 },
+      { id: "cat-perinatal", name: "Périnatal", slug: "perinatal", sort_order: 7 },
+      { id: "cat-naissance", name: "Préparation naissance", slug: "naissance", sort_order: 8 },
+      { id: "cat-soin", name: "Soins & Rituels", slug: "soin", sort_order: 9 },
+      { id: "cat-accouchement", name: "Accouchement", slug: "accouchement", sort_order: 10 },
+      { id: "cat-atelier", name: "Ateliers", slug: "atelier", sort_order: 11 },
+    ];
+    for (const cat of defaultCategories) {
+      await db.execute(
+        "INSERT INTO categories (id, name, slug, sort_order, active) VALUES (?, ?, ?, ?, 1)",
+        [cat.id, cat.name, cat.slug, cat.sort_order]
+      );
     }
   }
 };

@@ -1,7 +1,7 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
-import { Heart, ShoppingBag, Users, Calendar, Receipt, LogOut, Package, HardDrive, Database, User, Camera, Upload, Settings, LayoutDashboard } from "lucide-react";
+import { Heart, ShoppingBag, Users, Calendar, Receipt, LogOut, Package, HardDrive, Database, User, Camera, Upload, Settings, LayoutDashboard, LifeBuoy } from "lucide-react";
 import { toast } from "sonner";
 import { downloadDatabaseAction } from "@/lib/actions";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
@@ -17,6 +17,7 @@ const navItems = [
   { to: "/clients", label: "Clients", icon: Users },
   { to: "/agenda", label: "Agenda", icon: Calendar },
   { to: "/historique", label: "Historique", icon: Receipt },
+  { to: "/tickets", label: "Tickets", icon: LifeBuoy },
   { to: "/settings", label: "Paramètres", icon: Settings, adminOnly: true },
   { to: "/db-admin", label: "Base de données", icon: Database, adminOnly: true },
 ] as const;

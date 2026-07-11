@@ -102,11 +102,21 @@ export const syncEventToGoogle = async (appt: {
   }
 };
 
-export const deleteEventFromGoogle = async (googleEventId: string) => {
-  if (!calendar || !GOOGLE_CALENDAR_ID || !googleEventId) return;
+export const deleteEventFromGoogle = async (googleEventId: string, config?: { clientEmail?: string, privateKey?: string, calendarId?: string }) => {
+  const email = config?.clientEmail || GOOGLE_CLIENT_EMAIL;
+  const key = (config?.privateKey || GOOGLE_PRIVATE_KEY || "").replace(/\\n/g, "\n");
+  const calendarId = config?.calendarId || GOOGLE_CALENDAR_ID;
+
+  if (!email || !key || !calendarId || !googleEventId) return;
   try {
-    await calendar.events.delete({
-      calendarId: GOOGLE_CALENDAR_ID,
+    const jwtAuth = new google.auth.JWT({
+      email,
+      key,
+      scopes: ["https://www.googleapis.com/auth/calendar.events"],
+    });
+    const cal = google.calendar({ version: "v3", auth: jwtAuth });
+    await cal.events.delete({
+      calendarId,
       eventId: googleEventId,
     });
   } catch (error: any) {
@@ -115,12 +125,22 @@ export const deleteEventFromGoogle = async (googleEventId: string) => {
 };
 
 // Pull events FROM Google Calendar into local format
-export const pullEventsFromGoogle = async (from: string, to: string) => {
-  if (!calendar || !GOOGLE_CALENDAR_ID) return [];
+export const pullEventsFromGoogle = async (from: string, to: string, config?: { clientEmail?: string, privateKey?: string, calendarId?: string }) => {
+  const email = config?.clientEmail || GOOGLE_CLIENT_EMAIL;
+  const key = (config?.privateKey || GOOGLE_PRIVATE_KEY || "").replace(/\\n/g, "\n");
+  const calendarId = config?.calendarId || GOOGLE_CALENDAR_ID;
+
+  if (!email || !key || !calendarId) return [];
 
   try {
-    const res = await calendar.events.list({
-      calendarId: GOOGLE_CALENDAR_ID,
+    const jwtAuth = new google.auth.JWT({
+      email,
+      key,
+      scopes: ["https://www.googleapis.com/auth/calendar.events"],
+    });
+    const cal = google.calendar({ version: "v3", auth: jwtAuth });
+    const res = await cal.events.list({
+      calendarId,
       timeMin: new Date(from).toISOString(),
       timeMax: new Date(to + "T23:59:59").toISOString(),
       singleEvents: true,

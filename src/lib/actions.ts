@@ -1,8 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { db } from "./db.server";
-import { readFileSync, writeFileSync } from "fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 import { join } from "path";
-import { supabase } from "@/integrations/supabase/client";
 import bcrypt from "bcryptjs";
 import { syncEventToGoogle, deleteEventFromGoogle, pullEventsFromGoogle } from "./google-calendar.server";
 
@@ -13,7 +12,7 @@ import { syncEventToGoogle, deleteEventFromGoogle, pullEventsFromGoogle } from "
 // Verify user is authenticated and return their real role from DB
 const checkAuth = async (userId: string | undefined) => {
   if (!userId) throw new Error("Non authentifié");
-  const user = await db.prepare("SELECT id, role FROM users WHERE id = ?").get(userId) as any;
+  const user = await db.prepare("SELECT id, role, full_name, email FROM users WHERE id = ?").get(userId) as any;
   if (!user) throw new Error("Utilisateur introuvable");
   return user;
 };
@@ -68,9 +67,21 @@ const ALLOWED_TABLES = ["products", "clients", "appointments", "sales", "sale_it
 // ============================================
 // PRODUCTS
 // ============================================
+// Generic wrapper for server actions to ensure plain objects and error safety
+const safeAction = async (fn: () => Promise<any>) => {
+  try {
+    const res = await fn();
+    // Ensure the result is a plain object/array for serialization
+    return JSON.parse(JSON.stringify(res));
+  } catch (err: any) {
+    console.error("Server Action Error:", err.message);
+    throw err;
+  }
+};
+
 export const getProductsAction = createServerFn({ method: "GET" })
   .handler(async () => {
-    return await db.prepare("SELECT * FROM products WHERE deleted = 0 ORDER BY category ASC, sort_order ASC").all();
+    return safeAction(() => db.prepare("SELECT * FROM products WHERE deleted = 0 ORDER BY category ASC, sort_order ASC").all());
   });
 
 export const createProductAction = createServerFn({ method: "POST" })
@@ -110,7 +121,9 @@ export const toggleProductActiveAction = createServerFn({ method: "POST" })
 // ============================================
 export const getCategoriesAction = createServerFn({ method: "GET" })
   .handler(async () => {
-    return await db.prepare("SELECT * FROM categories ORDER BY sort_order ASC").all();
+    const data = await db.prepare("SELECT * FROM categories ORDER BY sort_order ASC").all();
+    console.log("🔍 DEBUG: Catégories récupérées:", data?.length || 0, "entrées");
+    return data;
   });
 
 export const createCategoryAction = createServerFn({ method: "POST" })
@@ -176,7 +189,7 @@ export const updateSettingsAction = createServerFn({ method: "POST" })
     await checkAdmin(data.adminId);
     console.log("Saving settings for admin:", data.adminId, data.settings);
     for (const [key, value] of Object.entries(data.settings)) {
-      await db.prepare("REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)")
+      await db.prepare("REPLACE INTO settings (`key`, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)")
         .run(key, value === null ? null : String(value));
     }
     return { success: true };
@@ -242,20 +255,43 @@ export const deleteClientAction = createServerFn({ method: "POST" })
 
 export const getClientPacksAction = createServerFn({ method: "GET" })
   .handler(async ({ data }: { data: string }) => {
-    return await db.prepare(`
+    const packs = await db.prepare(`
       SELECT cp.*, p.name as product_name
       FROM client_packs cp
       LEFT JOIN products p ON cp.product_id = p.id
       WHERE cp.client_id = ?
       ORDER BY cp.purchased_at DESC
     `).all(data);
+    
+    for (const pack of packs) {
+      pack.consumptions = await db.prepare("SELECT * FROM pack_consumptions WHERE pack_id = ? ORDER BY consumed_at ASC").all(pack.id);
+    }
+    return packs;
   });
 
 export const consumePackSessionAction = createServerFn({ method: "POST" })
-  .handler(async ({ data }: { data: { packId: string, userId: string } }) => {
+  .handler(async ({ data }: { data: { packId: string, date: string, userId: string } }) => {
     await checkAuth(data.userId);
-    await db.prepare("UPDATE client_packs SET sessions_remaining = sessions_remaining - 1 WHERE id = ? AND sessions_remaining > 0")
-      .run(data.packId);
+    const transaction = db.transaction(async () => {
+      const pack = await db.prepare("SELECT sessions_remaining FROM client_packs WHERE id = ?").get(data.packId);
+      if (!pack || pack.sessions_remaining <= 0) throw new Error("Pack épuisé");
+      
+      await db.prepare("UPDATE client_packs SET sessions_remaining = sessions_remaining - 1 WHERE id = ?").run(data.packId);
+      await db.prepare("INSERT INTO pack_consumptions (id, pack_id, consumed_at) VALUES (?, ?, ?)")
+        .run(crypto.randomUUID(), data.packId, data.date);
+    });
+    await transaction();
+    return { success: true };
+  });
+
+export const unconsumePackSessionAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: { consumptionId: string, packId: string, userId: string } }) => {
+    await checkAuth(data.userId);
+    const transaction = db.transaction(async () => {
+      await db.prepare("DELETE FROM pack_consumptions WHERE id = ?").run(data.consumptionId);
+      await db.prepare("UPDATE client_packs SET sessions_remaining = sessions_remaining + 1 WHERE id = ?").run(data.packId);
+    });
+    await transaction();
     return { success: true };
   });
 
@@ -276,7 +312,7 @@ export const getAppointmentsRangeAction = createServerFn({ method: "GET" })
 
 // Helper to get Google Config for sync
 async function getGoogleConfig() {
-  const rows = await db.prepare("SELECT key, value FROM settings WHERE key LIKE 'google_%'").all() as any[];
+  const rows = await db.prepare("SELECT `key`, value FROM settings WHERE `key` LIKE 'google_%'").all() as any[];
   const s = Object.fromEntries(rows.map(r => [r.key, r.value]));
   return {
     clientEmail: s.google_client_email,
@@ -290,12 +326,20 @@ export const createAppointmentAction = createServerFn({ method: "POST" })
     await checkAuth(data.created_by);
     const id = crypto.randomUUID();
     const startsAt = data.starts_at;
+    const duration = Number(data.duration_min) || 30;
+    const startDate = new Date(startsAt);
+    const endDate = new Date(startDate.getTime() + duration * 60000);
+    const endsAt = endDate.toISOString().replace('.000Z', '').replace('Z', '');
+
     const createdAt = data.created_at || new Date().toLocaleString('sv-SE').replace(' ', 'T');
+    
     const stmt = db.prepare(`
       INSERT INTO appointments (id, client_id, client_name, product_id, service_name, starts_at, duration_min, notes, created_by, google_event_id, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     
+
+
     // Sync to Google Calendar
     const googleConfig = await getGoogleConfig();
     const googleEventId = await syncEventToGoogle({
@@ -322,7 +366,8 @@ export const updateAppointmentStatusAction = createServerFn({ method: "POST" })
     
     // If cancelled or no-show, remove from Google Calendar
     if ((data.status === "cancelled" || data.status === "no_show") && appt.google_event_id) {
-      await deleteEventFromGoogle(appt.google_event_id);
+      const googleConfig = await getGoogleConfig();
+      await deleteEventFromGoogle(appt.google_event_id, googleConfig);
       await db.prepare("UPDATE appointments SET google_event_id = NULL WHERE id = ?").run(data.id);
     } 
     // If it was cancelled and now re-scheduled, we could re-sync, but for now we'll just handle deletion
@@ -332,7 +377,8 @@ export const updateAppointmentStatusAction = createServerFn({ method: "POST" })
 
 export const syncFromGoogleAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: { from: string; to: string } }) => {
-    const events = await pullEventsFromGoogle(data.from, data.to);
+    const googleConfig = await getGoogleConfig();
+    const events = await pullEventsFromGoogle(data.from, data.to, googleConfig);
     let imported = 0;
     for (const evt of events) {
       const existing = await db.prepare("SELECT id FROM appointments WHERE google_event_id = ?").get(evt.google_event_id) as any;
@@ -341,10 +387,11 @@ export const syncFromGoogleAction = createServerFn({ method: "POST" })
         const startDate = new Date(evt.starts_at);
         const endDate = new Date(evt.ends_at);
         const durationMin = Math.round((endDate.getTime() - startDate.getTime()) / 60000) || 60;
+        const mysqlStartsAt = evt.starts_at.includes('T') ? evt.starts_at.substring(0, 19) : evt.starts_at + " 00:00:00";
         await db.prepare(`
           INSERT INTO appointments (id, client_name, service_name, starts_at, duration_min, notes, google_event_id, status)
           VALUES (?, ?, ?, ?, ?, ?, ?, 'scheduled')
-        `).run(id, evt.summary, evt.summary, evt.starts_at, durationMin, evt.description, evt.google_event_id);
+        `).run(id, evt.summary, evt.summary, mysqlStartsAt, durationMin, evt.description, evt.google_event_id);
         imported++;
       }
     }
@@ -393,7 +440,8 @@ export const deleteAppointmentAction = createServerFn({ method: "POST" })
     const appt = await db.prepare("SELECT google_event_id FROM appointments WHERE id = ?").get(data.id) as any;
     
     if (appt?.google_event_id) {
-      await deleteEventFromGoogle(appt.google_event_id);
+      const googleConfig = await getGoogleConfig();
+      await deleteEventFromGoogle(appt.google_event_id, googleConfig);
     }
     
     await db.prepare("DELETE FROM appointments WHERE id = ?").run(data.id);
@@ -425,6 +473,16 @@ export const saveSaleAction = createServerFn({ method: "POST" })
       for (const item of items) {
         const itemId = item.id || crypto.randomUUID();
         await itemStmt.run(itemId, saleId, item.product_id, item.product_name, item.unit_price, item.quantity, item.line_total);
+
+        if (item.pack_sessions && item.pack_sessions > 0 && sale.client_id) {
+          for (let i = 0; i < item.quantity; i++) {
+            const packId = crypto.randomUUID();
+            await db.prepare(`
+              INSERT INTO client_packs (id, client_id, product_id, sessions_total, sessions_remaining, purchased_at)
+              VALUES (?, ?, ?, ?, ?, ?)
+            `).run(packId, sale.client_id, item.product_id, item.pack_sessions, item.pack_sessions, createdAt);
+          }
+        }
       }
     });
       await transaction();
@@ -472,6 +530,16 @@ export const getSaleItemsAction = createServerFn({ method: "GET" })
     return await db.prepare("SELECT * FROM sale_items WHERE sale_id = ?").all(data);
   });
 
+export const getClientSalesAction = createServerFn({ method: "GET" })
+  .handler(async ({ data }: { data: { clientId: string, userId: string } }) => {
+    await checkAuth(data.userId);
+    const sales = await db.prepare("SELECT * FROM sales WHERE client_id = ? ORDER BY created_at DESC").all(data.clientId) as any[];
+    for (const sale of sales) {
+      sale.items = await db.prepare("SELECT * FROM sale_items WHERE sale_id = ?").all(sale.id);
+    }
+    return sales;
+  });
+
 // ============================================
 // BACKUP & ADMIN (protected + SQL injection fix)
 // ============================================
@@ -503,31 +571,7 @@ export const getTableDataAction = createServerFn({ method: "POST" })
     return await db.prepare(`SELECT * FROM ${data.tableName} LIMIT 100`).all();
   });
 
-export const importFromSupabaseAction = createServerFn({ method: "POST" })
-  .handler(async ({ data }: { data: { products: any[], clients: any[] } }) => {
-    const transaction = db.transaction(async () => {
-      if (data.products.length > 0) {
-        const stmt = db.prepare(`
-          INSERT OR REPLACE INTO products (id, name, category, type, price, active, sort_order)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
-        `);
-        for (const p of data.products) {
-          await stmt.run(p.id, p.name, p.category, p.type, p.price, p.active ? 1 : 0, p.sort_order);
-        }
-      }
-      if (data.clients.length > 0) {
-        const stmt = db.prepare(`
-          INSERT OR REPLACE INTO clients (id, first_name, last_name, phone, email, is_member, children_count, notes)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        `);
-        for (const c of data.clients) {
-          await stmt.run(c.id, c.first_name, c.last_name, c.phone, c.email, c.is_member ? 1 : 0, c.children_count, c.notes);
-        }
-      }
-    });
-    await transaction();
-    return { success: true };
-  });
+
 
 // ============================================
 // AUTH (with bcrypt + rate limiting)
@@ -654,4 +698,65 @@ export const uploadAvatarAction = createServerFn({ method: "POST" })
     
     const updated = await db.prepare("SELECT id, email, full_name, role, avatar_url, created_at FROM users WHERE id = ?").get(userId) as any;
     return updated;
+  });
+
+// ============================================
+// TICKETS
+// ============================================
+
+export const getTicketsAction = createServerFn({ method: "GET" })
+  .handler(async ({ data }: { data?: { userId: string } }) => {
+    if (data?.userId) {
+      const user = await checkAuth(data.userId);
+      if (user.role === 'admin') {
+        return await db.prepare("SELECT * FROM tickets ORDER BY created_at DESC").all();
+      } else {
+        return await db.prepare("SELECT * FROM tickets WHERE user_id = ? ORDER BY created_at DESC").all(data.userId);
+      }
+    }
+    return [];
+  });
+
+export const createTicketAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: any }) => {
+    const user = await checkAuth(data.userId);
+    const id = crypto.randomUUID();
+    const createdAt = new Date().toLocaleString('sv-SE').replace(' ', 'T');
+    await db.prepare(`
+      INSERT INTO tickets (id, user_id, user_name, type, title, description, image_url, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)
+    `).run(id, user.id, user.full_name || user.email, data.type, data.title, data.description, data.image_url || null, createdAt, createdAt);
+    return { success: true, id };
+  });
+
+export const updateTicketStatusAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: { ticketId: string, status: string, adminId: string } }) => {
+    await checkAdmin(data.adminId);
+    await db.prepare("UPDATE tickets SET status = ? WHERE id = ?").run(data.status, data.ticketId);
+    return { success: true };
+  });
+
+export const uploadTicketImageAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: any }) => {
+    const { userId, base64, filename } = data;
+    await checkAuth(userId);
+
+    if (!base64) throw new Error("Données d'image manquantes");
+
+    const base64Data = base64.replace(/^data:image\/\w+;base64,/, "");
+    const buffer = Buffer.from(base64Data, 'base64');
+    
+    const extension = filename.split('.').pop() || 'png';
+    const newFilename = `ticket_${userId}_${Date.now()}.${extension}`;
+    const dirPath = join(process.cwd(), "public", "uploads", "tickets");
+    
+    if (!existsSync(dirPath)) {
+      mkdirSync(dirPath, { recursive: true });
+    }
+    
+    const filePath = join(dirPath, newFilename);
+    writeFileSync(filePath, buffer);
+    
+    const publicUrl = `/uploads/tickets/${newFilename}`;
+    return { success: true, url: publicUrl };
   });

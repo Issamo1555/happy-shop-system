@@ -1,29 +1,46 @@
-# ============================================
-# Mums'Home POS - Docker Compose
-# ============================================
-# Versions verrouillées :
-#   Image base : node:20.18.1-alpine3.20
-#   App port   : 8080
-#   SQLite     : persisté via volume Docker
+version: '3.8'
 
 services:
-  pos:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: mumshome-pos:1.0.1
-    container_name: mums-home-pos
-    restart: unless-stopped
+  app:
+    build: .
+    container_name: posrdv-app
+    restart: always
     ports:
-      - "${APP_PORT:-8080}:8080"
-    volumes:
-      # Persist SQLite database outside the container
-      - pos-data:/app/data
+      - "4000:3000"
     environment:
       - NODE_ENV=production
-      - PORT=8080
-      - HOST=0.0.0.0
+      - PORT=3000
+      - MYSQL_HOST=db
+      - MYSQL_PORT=3306
+      - MYSQL_USER=${MYSQL_USER:-pos_user}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-PosRdv2027!Secure}
+      - MYSQL_DATABASE=${MYSQL_DATABASE:-mums_home_pos}
+      - GOOGLE_CLIENT_EMAIL=${GOOGLE_CLIENT_EMAIL}
+      - GOOGLE_PRIVATE_KEY=${GOOGLE_PRIVATE_KEY}
+      - GOOGLE_CALENDAR_ID=${GOOGLE_CALENDAR_ID}
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: mariadb:10.11
+    container_name: posrdv-db
+    restart: always
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-RootPosRdv2027!}
+      - MYSQL_DATABASE=${MYSQL_DATABASE:-mums_home_pos}
+      - MYSQL_USER=${MYSQL_USER:-pos_user}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-PosRdv2027!Secure}
+    volumes:
+      - posrdv_mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
 volumes:
-  pos-data:
-    driver: local
+  posrdv_mysql_data:

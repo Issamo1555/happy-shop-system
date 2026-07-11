@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState, type FormEvent } from "react";
-import { getClientsAction, createClientAction, updateClientAction, deleteClientAction, getClientPacksAction, consumePackSessionAction, toggleClientActiveAction } from "@/lib/actions";
+import { getClientsAction, createClientAction, updateClientAction, deleteClientAction, getClientPacksAction, consumePackSessionAction, unconsumePackSessionAction, toggleClientActiveAction, getClientSalesAction } from "@/lib/actions";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,8 +9,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, Phone, Mail, Star, Trash2 } from "lucide-react";
+import { Plus, Search, Phone, Mail, Star, Trash2, Check, Calendar } from "lucide-react";
 import { toast } from "sonner";
 import {
   Pagination,
@@ -47,7 +48,8 @@ interface Pack {
   sessions_total: number;
   sessions_remaining: number;
   purchased_at: string;
-  products: { name: string } | null;
+  product_name?: string;
+  consumptions?: { id: string, consumed_at: string }[];
 }
 
 function ClientsPage() {
@@ -57,6 +59,7 @@ function ClientsPage() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Client | null>(null);
   const [packs, setPacks] = useState<Pack[]>([]);
+  const [sales, setSales] = useState<any[]>([]);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
 
   const [currentPage, setCurrentPage] = useState(1);
@@ -72,8 +75,12 @@ function ClientsPage() {
 
   const openClient = async (c: Client) => {
     setSelectedClient(c);
-    const data = await getClientPacksAction({ data: c.id });
-    setPacks((data ?? []) as any);
+    const [packsData, salesData] = await Promise.all([
+      getClientPacksAction({ data: c.id }),
+      getClientSalesAction({ data: { clientId: c.id, userId: user?.id || "" } })
+    ]);
+    setPacks((packsData ?? []) as any);
+    setSales((salesData ?? []) as any);
   };
 
   const filtered = clients.filter((c) => {
@@ -86,11 +93,20 @@ function ClientsPage() {
   const totalPages = Math.ceil(filtered.length / itemsPerPage);
   const paginatedClients = filtered.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
+  const [sessionDate, setSessionDate] = useState(() => new Date().toISOString().split('T')[0]);
+
   const consumeSession = async (pack: Pack) => {
     if (pack.sessions_remaining <= 0) return;
-    await consumePackSessionAction({ data: { packId: pack.id, userId: user?.id } });
+    await consumePackSessionAction({ data: { packId: pack.id, date: sessionDate, userId: user?.id } });
     if (selectedClient) openClient(selectedClient);
     toast.success("Séance décomptée");
+  };
+
+  const unconsumeSession = async (packId: string, consumptionId: string) => {
+    if (!window.confirm("Voulez-vous annuler le décompte de cette séance ?")) return;
+    await unconsumePackSessionAction({ data: { consumptionId, packId, userId: user?.id } });
+    if (selectedClient) openClient(selectedClient);
+    toast.success("Séance recréditée");
   };
   
   const handleToggleActive = async (id: string, active: boolean) => {
@@ -252,18 +268,105 @@ function ClientsPage() {
                   {packs.length === 0 ? (
                     <p className="text-sm text-muted-foreground">Aucun pack en cours.</p>
                   ) : (
-                    <div className="space-y-2">
-                      {packs.map((p) => (
-                        <div key={p.id} className="flex items-center gap-3 p-3 rounded-lg bg-muted/30">
-                          <div className="flex-1">
-                            <p className="text-sm font-medium">{p.products?.name ?? "Pack"}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {p.sessions_remaining}/{p.sessions_total} séances restantes
-                            </p>
+                    <div className="space-y-4">
+                      {packs.map((p) => {
+                        const consumptions = p.consumptions || [];
+                        const emptyCount = Math.max(0, p.sessions_total - consumptions.length);
+                        return (
+                          <div key={p.id} className="p-4 rounded-xl bg-[#FDFBF7] border border-[#EBE3D5] shadow-sm">
+                            <div className="flex justify-between items-start mb-3">
+                              <p className="text-lg font-display text-primary">{p.product_name ?? "Pack"}</p>
+                              <Badge variant="outline" className="bg-white border-[#D6C5B3] text-[#8C7A6B]">
+                                {p.sessions_remaining} restantes sur {p.sessions_total}
+                              </Badge>
+                            </div>
+                            <div className="flex flex-wrap gap-3">
+                              {/* Sessions consommées */}
+                              {consumptions.map((c, idx) => (
+                                <div key={c.id} className="flex flex-col items-center gap-1 group relative">
+                                  <div 
+                                    className="w-12 h-12 rounded-lg bg-[#E29578]/20 border-2 border-[#E29578] flex items-center justify-center cursor-pointer transition-colors hover:bg-destructive/20 hover:border-destructive"
+                                    onClick={() => unconsumeSession(p.id, c.id)}
+                                    title="Cliquez pour annuler"
+                                  >
+                                    <Check className="w-6 h-6 text-[#E29578] group-hover:hidden" strokeWidth={3} />
+                                    <Trash2 className="w-5 h-5 text-destructive hidden group-hover:block" />
+                                  </div>
+                                  <span className="text-[10px] font-medium text-[#8C7A6B]">
+                                    {new Date(c.consumed_at).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}
+                                  </span>
+                                </div>
+                              ))}
+                              
+                              {/* Séances restantes (vides) */}
+                              {Array.from({ length: emptyCount }).map((_, idx) => (
+                                <Popover key={idx}>
+                                  <PopoverTrigger asChild>
+                                    <div className="flex flex-col items-center gap-1 cursor-pointer hover:-translate-y-0.5 transition-transform">
+                                      <div className="w-12 h-12 rounded-lg border-2 border-dashed border-[#D6C5B3] flex items-center justify-center bg-white hover:border-[#E29578]/50 hover:bg-[#E29578]/5">
+                                        <Plus className="w-4 h-4 text-[#D6C5B3]" />
+                                      </div>
+                                      <span className="text-[10px] text-muted-foreground">Séance {consumptions.length + idx + 1}</span>
+                                    </div>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-64 p-3" side="bottom">
+                                    <div className="space-y-3">
+                                      <p className="text-sm font-medium">Décompter une séance</p>
+                                      <div>
+                                        <Label className="text-xs">Date de la prestation</Label>
+                                        <Input 
+                                          type="date" 
+                                          className="h-8 mt-1 text-sm" 
+                                          value={sessionDate} 
+                                          onChange={(e) => setSessionDate(e.target.value)} 
+                                        />
+                                      </div>
+                                      <Button size="sm" className="w-full" onClick={() => consumeSession(p)}>
+                                        Valider
+                                      </Button>
+                                    </div>
+                                  </PopoverContent>
+                                </Popover>
+                              ))}
+                            </div>
                           </div>
-                          <Button size="sm" variant="outline" disabled={p.sessions_remaining <= 0} onClick={() => consumeSession(p)}>
-                            Consommer
-                          </Button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                <div className="border-t border-border pt-4">
+                  <h3 className="font-display text-lg text-primary mb-2">Historique des ventes / paiements</h3>
+                  {sales.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Aucun achat enregistré pour ce client.</p>
+                  ) : (
+                    <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                      {sales.map((sale) => (
+                        <div key={sale.id} className="p-3 rounded-xl bg-card border border-border flex justify-between items-center text-xs">
+                          <div>
+                            <p className="font-medium text-foreground">
+                              {new Date(sale.created_at).toLocaleDateString("fr-FR", {
+                                day: "numeric",
+                                month: "long",
+                                year: "numeric",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </p>
+                            <p className="text-[10px] text-muted-foreground mt-0.5">
+                              Paiement : <span className="font-medium text-foreground">{sale.payment_method}</span>
+                              {sale.note && ` | Obs : ${sale.note}`}
+                            </p>
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              {sale.items?.map((item: any) => (
+                                <span key={item.id} className="bg-primary/5 text-primary px-1.5 py-0.5 rounded text-[10px] border border-primary/10">
+                                  {item.product_name} (x{item.quantity})
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                          <p className="font-bold text-sm text-primary">{Number(sale.total).toFixed(2)} DH</p>
                         </div>
                       ))}
                     </div>

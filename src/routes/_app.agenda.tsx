@@ -74,16 +74,17 @@ function AgendaPage() {
   };
 
   const load = async () => {
+    let data: any[] = [];
     if (view === "day") {
       const dayStr = format(day, "yyyy-MM-dd");
-      const data = await getAppointmentsAction({ data: dayStr });
-      setAppts(data as unknown as Appt[]);
+      data = await getAppointmentsAction({ data: dayStr }) as any[];
     } else {
       const start = view === "week" ? startOfWeek(day, { weekStartsOn: 1 }) : startOfMonth(day);
       const end = view === "week" ? endOfWeek(day, { weekStartsOn: 1 }) : endOfMonth(day);
-      const data = await getAppointmentsRangeAction({ data: { from: format(start, "yyyy-MM-dd"), to: format(end, "yyyy-MM-dd") } });
-      setAppts(data as unknown as Appt[]);
+      data = await getAppointmentsRangeAction({ data: { from: format(start, "yyyy-MM-dd"), to: format(end, "yyyy-MM-dd") } }) as any[];
     }
+
+    setAppts(data);
   };
 
   useEffect(() => {
@@ -196,6 +197,15 @@ function AgendaPage() {
 
 /* ============================== DAY VIEW ============================== */
 function DayView({ appts, onStatus, onEdit, onDelete }: { appts: Appt[]; onStatus: (id: string, s: Appt["status"]) => void; onEdit: (a: Appt) => void; onDelete: (id: string) => void }) {
+  const grouped = useMemo(() => {
+    const map: Record<string, Appt[]> = {};
+    appts.forEach(a => {
+      if (!map[a.starts_at]) map[a.starts_at] = [];
+      map[a.starts_at].push(a);
+    });
+    return Object.keys(map).sort().map(k => map[k]);
+  }, [appts]);
+
   if (appts.length === 0) {
     return (
       <div className="pos-card p-12 text-center text-muted-foreground">
@@ -205,8 +215,16 @@ function DayView({ appts, onStatus, onEdit, onDelete }: { appts: Appt[]; onStatu
     );
   }
   return (
-    <div className="space-y-2">
-      {appts.map((a) => <ApptRow key={a.id} appt={a} onStatus={onStatus} onEdit={onEdit} onDelete={onDelete} />)}
+    <div className="space-y-3">
+      {grouped.map((group, idx) => (
+        <div key={idx} className="flex flex-col md:flex-row gap-2">
+          {group.map((a) => (
+            <div key={a.id} className="flex-1 min-w-0">
+              <ApptRow appt={a} onStatus={onStatus} onEdit={onEdit} onDelete={onDelete} />
+            </div>
+          ))}
+        </div>
+      ))}
     </div>
   );
 }
@@ -243,9 +261,23 @@ function WeekView({ appts, day, onStatus, onDayClick, onEdit }: { appts: Appt[];
               </p>
             </button>
             <div className="flex-1 space-y-1 overflow-y-auto" style={{ maxHeight: "50vh" }}>
-              {dayAppts.map(a => (
-                <WeekApptCard key={a.id} appt={a} onEdit={onEdit} />
-              ))}
+              {(() => {
+                const map: Record<string, Appt[]> = {};
+                dayAppts.forEach(a => {
+                  if (!map[a.starts_at]) map[a.starts_at] = [];
+                  map[a.starts_at].push(a);
+                });
+                const grouped = Object.keys(map).sort().map(k => map[k]);
+                return grouped.map((group, idx) => (
+                  <div key={idx} className="flex flex-row gap-1">
+                    {group.map(a => (
+                      <div key={a.id} className="flex-1 min-w-0">
+                        <WeekApptCard appt={a} onEdit={onEdit} />
+                      </div>
+                    ))}
+                  </div>
+                ));
+              })()}
             </div>
           </div>
         );
@@ -257,9 +289,13 @@ function WeekView({ appts, day, onStatus, onDayClick, onEdit }: { appts: Appt[];
 function WeekApptCard({ appt, onEdit }: { appt: Appt; onEdit: (a: Appt) => void }) {
   const start = parseISO(appt.starts_at);
   return (
-    <div onClick={() => onEdit(appt)} className={`rounded-md p-1.5 text-[11px] border cursor-pointer transition-all hover:shadow-md ${statusColor[appt.status]}`}>
-      <p className="font-semibold truncate">{format(start, "HH:mm")} {appt.client_name}</p>
-      <p className="truncate opacity-80">{appt.service_name}</p>
+    <div 
+      onClick={() => onEdit(appt)} 
+      title={`${format(start, "HH:mm")} - ${appt.client_name}\n${appt.service_name}`}
+      className={`rounded-md p-1 text-[10px] leading-tight border cursor-pointer transition-all hover:shadow-md ${statusColor[appt.status]}`}
+    >
+      <p className="font-semibold break-words">{format(start, "HH:mm")} <br className="hidden sm:block" />{appt.client_name}</p>
+      <p className="break-words opacity-80 mt-0.5">{appt.service_name}</p>
     </div>
   );
 }
@@ -325,8 +361,8 @@ function MonthView({ appts, day, onDayClick }: { appts: Appt[]; day: Date; onDay
 function ApptRow({ appt, onStatus, onEdit, onDelete }: { appt: Appt; onStatus: (id: string, s: Appt["status"]) => void; onEdit: (a: Appt) => void; onDelete: (id: string) => void }) {
   const start = parseISO(appt.starts_at);
   return (
-    <div className="pos-card p-4 flex items-center gap-4">
-      <div className="flex-1 flex items-center gap-4 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => onEdit(appt)}>
+    <div className="pos-card p-4 flex flex-wrap items-center gap-4 h-full">
+      <div className="flex-1 min-w-[200px] flex items-center gap-4 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => onEdit(appt)}>
         <div className="text-center min-w-[64px]">
           <p className="font-display text-2xl text-primary leading-none">{format(start, "HH:mm")}</p>
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground mt-1 flex items-center justify-center gap-1">
@@ -373,6 +409,7 @@ function ApptDialog({ products, clients, defaultDay, userId, onSaved }: {
   const [time, setTime] = useState("10:00");
   const [duration, setDuration] = useState(60);
   const [notes, setNotes] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     const p = products.find((x) => x.id === productId);
@@ -381,6 +418,8 @@ function ApptDialog({ products, clients, defaultDay, userId, onSaved }: {
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
+    
     const product = products.find((p) => p.id === productId);
     const client = clients.find((c) => c.id === clientId);
     const clientName = client ? `${client.first_name} ${client.last_name ?? ""}`.trim() : manualName;
@@ -389,6 +428,7 @@ function ApptDialog({ products, clients, defaultDay, userId, onSaved }: {
       return;
     }
     const startsAt = `${date}T${time}:00`;
+    setSubmitting(true);
     try {
       await createAppointmentAction({
         data: {
@@ -407,6 +447,8 @@ function ApptDialog({ products, clients, defaultDay, userId, onSaved }: {
     } catch (err: any) {
       console.error("Erreur création RDV:", err);
       toast.error("Erreur: " + (err?.message || "Impossible de créer le RDV"));
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -448,7 +490,11 @@ function ApptDialog({ products, clients, defaultDay, userId, onSaved }: {
           <div><Label>Durée (min)</Label><Input type="number" min={15} step={15} value={duration} onChange={(e) => setDuration(Number(e.target.value) || 60)} /></div>
         </div>
         <div><Label>Notes</Label><Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} /></div>
-        <DialogFooter><Button type="submit">Créer le RDV</Button></DialogFooter>
+        <DialogFooter>
+          <Button type="submit" disabled={submitting}>
+            {submitting ? "Création..." : "Créer le RDV"}
+          </Button>
+        </DialogFooter>
       </form>
     </DialogContent>
   );

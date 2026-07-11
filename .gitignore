@@ -36,6 +36,10 @@ dist-ssr
 *.db-shm
 *.db-wal
 
+# Backups
+*backup*.sql
+*backup*.db
+
 # Environment secrets
 .env
 .env.*
