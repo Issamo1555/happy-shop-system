@@ -20,7 +20,8 @@ if (isMySQL) {
     socketPath: process.env.MYSQL_SOCKET || undefined,
     waitForConnections: true,
     connectionLimit: 10,
-    queueLimit: 0
+    queueLimit: 0,
+    dateStrings: true
   });
 } else {
   console.log("📦 Using SQLite database (pos.db)");
