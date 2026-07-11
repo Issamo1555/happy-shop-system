@@ -90,10 +90,10 @@ export const createProductAction = createServerFn({ method: "POST" })
     await checkAdmin(data.adminId);
     const id = data.id || crypto.randomUUID();
     const stmt = db.prepare(`
-      INSERT INTO products (id, name, category, type, price, active, sort_order)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO products (id, name, category, type, price, active, sort_order, pack_sessions)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    await stmt.run(id, data.name, data.category, data.type, data.price, data.active ? 1 : 0, data.sort_order);
+    await stmt.run(id, data.name, data.category, data.type, data.price, data.active ? 1 : 0, data.sort_order, data.pack_sessions || null);
     return { success: true, id };
   });
 
@@ -101,12 +101,12 @@ export const updateProductAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: any }) => {
     console.log("Updating product with data:", data);
     await checkAdmin(data.adminId);
-    const { id, name, category, type, price, active, sort_order } = data;
+    const { id, name, category, type, price, active, sort_order, pack_sessions } = data;
     await db.prepare(`
       UPDATE products 
-      SET name = ?, category = ?, type = ?, price = ?, active = ?, sort_order = ?
+      SET name = ?, category = ?, type = ?, price = ?, active = ?, sort_order = ?, pack_sessions = ?
       WHERE id = ?
-    `).run(name, category, type, price, active ? 1 : 0, sort_order, id);
+    `).run(name, category, type, price, active ? 1 : 0, sort_order, pack_sessions || null, id);
     return { success: true };
   });
 

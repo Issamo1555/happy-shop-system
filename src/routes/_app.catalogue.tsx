@@ -81,6 +81,7 @@ function CataloguePage() {
     price: 0,
     active: true,
     sort_order: 0,
+    pack_sessions: null,
   });
 
   const [isCategoryAddOpen, setIsCategoryAddOpen] = useState(false);
@@ -179,6 +180,7 @@ function CataloguePage() {
         price: 0,
         active: true,
         sort_order: 0,
+        pack_sessions: null,
       });
       await fetchProducts();
     } catch (err: any) {
@@ -337,16 +339,20 @@ function CataloguePage() {
                         </SelectContent>
                       </Select>
                     </div>
+                  </div>
+                  {newProduct.type === "pack" && (
                     <div className="space-y-2">
-                      <Label htmlFor="new-sort">Ordre</Label>
+                      <Label htmlFor="new-sessions">Nombre de séances dans le pack</Label>
                       <Input
-                        id="new-sort"
+                        id="new-sessions"
                         type="number"
-                        value={newProduct.sort_order}
-                        onChange={(e) => setNewProduct({ ...newProduct, sort_order: Number(e.target.value) })}
+                        min={1}
+                        placeholder="Ex: 10"
+                        value={newProduct.pack_sessions || ""}
+                        onChange={(e) => setNewProduct({ ...newProduct, pack_sessions: Number(e.target.value) || null })}
                       />
                     </div>
-                  </div>
+                  )}
                   <Button onClick={handleAdd} className="w-full" disabled={loading}>
                     {loading ? "Chargement..." : "Enregistrer"}
                   </Button>
@@ -384,13 +390,34 @@ function CataloguePage() {
                     <TableRow key={product.id}>
                       <TableCell>
                         {editingId === product.id ? (
-                          <Input
-                            value={editForm.name}
-                            onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                            className="h-8"
-                          />
+                          <div className="space-y-2">
+                            <Input
+                              value={editForm.name}
+                              onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                              className="h-8"
+                            />
+                            {editForm.type === "pack" && (
+                              <div className="flex items-center gap-2">
+                                <Label className="text-xs shrink-0">Séances :</Label>
+                                <Input
+                                  type="number"
+                                  min={1}
+                                  value={editForm.pack_sessions || ""}
+                                  onChange={(e) => setEditForm({ ...editForm, pack_sessions: Number(e.target.value) || null })}
+                                  className="h-8 w-20"
+                                />
+                              </div>
+                            )}
+                          </div>
                         ) : (
-                          <span className="font-medium">{product.name}</span>
+                          <div className="flex flex-col">
+                            <span className="font-medium">{product.name}</span>
+                            {product.type === "pack" && (
+                              <span className="text-[10px] bg-primary/10 text-primary-dark font-semibold px-1.5 py-0.5 rounded w-max mt-0.5">
+                                Pack de {product.pack_sessions || 0} séances
+                              </span>
+                            )}
+                          </div>
                         )}
                       </TableCell>
                       <TableCell>
