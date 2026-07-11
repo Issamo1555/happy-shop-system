@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { db } from "./db.server";
-import { readFileSync, writeFileSync } from "fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 import { join } from "path";
 import bcrypt from "bcryptjs";
 import { syncEventToGoogle, deleteEventFromGoogle, pullEventsFromGoogle } from "./google-calendar.server";
@@ -12,7 +12,7 @@ import { syncEventToGoogle, deleteEventFromGoogle, pullEventsFromGoogle } from "
 // Verify user is authenticated and return their real role from DB
 const checkAuth = async (userId: string | undefined) => {
   if (!userId) throw new Error("Non authentifié");
-  const user = await db.prepare("SELECT id, role FROM users WHERE id = ?").get(userId) as any;
+  const user = await db.prepare("SELECT id, role, full_name, email FROM users WHERE id = ?").get(userId) as any;
   if (!user) throw new Error("Utilisateur introuvable");
   return user;
 };
@@ -685,4 +685,65 @@ export const uploadAvatarAction = createServerFn({ method: "POST" })
     
     const updated = await db.prepare("SELECT id, email, full_name, role, avatar_url, created_at FROM users WHERE id = ?").get(userId) as any;
     return updated;
+  });
+
+// ============================================
+// TICKETS
+// ============================================
+
+export const getTicketsAction = createServerFn({ method: "GET" })
+  .handler(async ({ data }: { data?: { userId: string } }) => {
+    if (data?.userId) {
+      const user = await checkAuth(data.userId);
+      if (user.role === 'admin') {
+        return await db.prepare("SELECT * FROM tickets ORDER BY created_at DESC").all();
+      } else {
+        return await db.prepare("SELECT * FROM tickets WHERE user_id = ? ORDER BY created_at DESC").all(data.userId);
+      }
+    }
+    return [];
+  });
+
+export const createTicketAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: any }) => {
+    const user = await checkAuth(data.userId);
+    const id = crypto.randomUUID();
+    const createdAt = new Date().toLocaleString('sv-SE').replace(' ', 'T');
+    await db.prepare(`
+      INSERT INTO tickets (id, user_id, user_name, type, title, description, image_url, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)
+    `).run(id, user.id, user.full_name || user.email, data.type, data.title, data.description, data.image_url || null, createdAt, createdAt);
+    return { success: true, id };
+  });
+
+export const updateTicketStatusAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: { ticketId: string, status: string, adminId: string } }) => {
+    await checkAdmin(data.adminId);
+    await db.prepare("UPDATE tickets SET status = ? WHERE id = ?").run(data.status, data.ticketId);
+    return { success: true };
+  });
+
+export const uploadTicketImageAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: any }) => {
+    const { userId, base64, filename } = data;
+    await checkAuth(userId);
+
+    if (!base64) throw new Error("Données d'image manquantes");
+
+    const base64Data = base64.replace(/^data:image\/\w+;base64,/, "");
+    const buffer = Buffer.from(base64Data, 'base64');
+    
+    const extension = filename.split('.').pop() || 'png';
+    const newFilename = `ticket_${userId}_${Date.now()}.${extension}`;
+    const dirPath = join(process.cwd(), "public", "uploads", "tickets");
+    
+    if (!existsSync(dirPath)) {
+      mkdirSync(dirPath, { recursive: true });
+    }
+    
+    const filePath = join(dirPath, newFilename);
+    writeFileSync(filePath, buffer);
+    
+    const publicUrl = `/uploads/tickets/${newFilename}`;
+    return { success: true, url: publicUrl };
   });

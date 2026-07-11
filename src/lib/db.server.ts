@@ -228,6 +228,18 @@ export const initServerDb = async () => {
       \`key\` VARCHAR(100) PRIMARY KEY,
       value TEXT,
       updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS tickets (
+      id VARCHAR(50) PRIMARY KEY,
+      user_id VARCHAR(50) NOT NULL,
+      user_name VARCHAR(255) NOT NULL,
+      type VARCHAR(50) NOT NULL,
+      title VARCHAR(255) NOT NULL,
+      description TEXT NOT NULL,
+      image_url TEXT,
+      status VARCHAR(20) NOT NULL DEFAULT 'open',
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
     )`
   ] : [
     // SQLite Schema (existing one)
@@ -353,6 +365,18 @@ export const initServerDb = async () => {
       CREATE TABLE IF NOT EXISTS settings (
         \`key\` TEXT PRIMARY KEY,
         value TEXT,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE TABLE IF NOT EXISTS tickets (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        user_name TEXT NOT NULL,
+        type TEXT NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL,
+        image_url TEXT,
+        status TEXT NOT NULL DEFAULT 'open',
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
 
