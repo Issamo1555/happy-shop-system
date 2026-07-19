@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CATEGORY_LABELS, CATEGORY_ORDER, formatDhs } from "@/lib/format";
+import { formatDhs } from "@/lib/format";
 import { Plus, Minus, Trash2, ShoppingBag, Receipt, Search, Calculator, Banknote, Camera, ImageIcon, X } from "lucide-react";
 import { Numpad } from "@/components/Numpad";
 import { toast } from "sonner";
@@ -78,11 +78,12 @@ function CaissePage() {
   useEffect(() => {
     (async () => {
       try {
+        const tenantData = { data: { tenantId: user?.tenant_id } };
         const [prods, cls, sett, cats] = await Promise.all([
-          getProductsAction(),
-          getClientsAction(),
-          getSettingsAction(),
-          getCategoriesAction()
+          getProductsAction(tenantData),
+          getClientsAction(tenantData),
+          getSettingsAction(tenantData),
+          getCategoriesAction(tenantData)
         ]);
         
         const prodList = prods as unknown as Product[];
@@ -100,7 +101,7 @@ function CaissePage() {
         console.error("Erreur de chargement Caisse:", err);
       }
     })();
-  }, []);
+  }, [user?.tenant_id]);
 
   const selectedClient = useMemo(
     () => clients.find((c) => c.id === clientId) ?? null,
@@ -141,17 +142,7 @@ function CaissePage() {
   const changeToReturn = Math.max(0, cashReceived - total);
 
   const categoriesPresent = useMemo(() => {
-    // 1. Start with default categories from code
-    const baseCats = CATEGORY_ORDER.map(c => ({ 
-      slug: c, 
-      name: CATEGORY_LABELS[c] || c 
-    }));
-
-    // 2. Add custom categories from DB (avoiding duplicates)
-    const fromDb = Array.isArray(dbCategories) ? dbCategories : [];
-    const customCats = fromDb.filter(dbCat => !CATEGORY_ORDER.includes(dbCat.slug));
-
-    return [...baseCats, ...customCats];
+    return Array.isArray(dbCategories) ? dbCategories : [];
   }, [dbCategories]);
 
   // Set initial category if not set or invalid
@@ -257,8 +248,9 @@ function CaissePage() {
             <ScrollArea className="w-full">
               <TabsList className="h-auto flex-wrap justify-start bg-muted/40">
                 {categoriesPresent.map((c: any) => (
-                  <TabsTrigger key={c.slug || c} value={c.slug || c} className="text-xs">
-                    {c.name || CATEGORY_LABELS[c] || c}
+                  <TabsTrigger key={c.slug || c} value={c.slug || c} className="text-sm flex items-center gap-2 py-2 px-4">
+                    {c.image_url && <img src={c.image_url} alt="" className="w-6 h-6 object-contain drop-shadow-sm" />}
+                    {c.name || c.slug}
                   </TabsTrigger>
                 ))}
               </TabsList>
@@ -280,13 +272,18 @@ function CaissePage() {
                   packSessions: p.pack_sessions,
                 })
               }
-              className="pos-card p-4 text-left hover:border-primary hover:-translate-y-0.5 transition-all flex flex-col gap-2"
+              className="pos-card p-4 text-left hover:border-primary hover:-translate-y-0.5 transition-all flex flex-col gap-2 relative overflow-hidden group"
             >
-              <Badge variant="secondary" className="self-start text-[10px]">
-                {dbCategories.find(c => c.slug === p.category)?.name || CATEGORY_LABELS[p.category] || p.category}
+              <Badge variant="secondary" className="text-[10px] w-fit z-10">
+                {dbCategories.find(c => c.slug === p.category)?.name || p.category}
               </Badge>
-              <p className="font-medium text-sm leading-tight flex-1">{p.name}</p>
-              <p className="font-display text-xl text-primary">{formatDhs(Number(p.price))}</p>
+              {p.image_url && (
+                <div className="flex justify-center w-full py-3 z-10">
+                  <img src={p.image_url} alt="" className="w-20 h-20 object-contain drop-shadow-md group-hover:scale-110 transition-transform duration-300" />
+                </div>
+              )}
+              <p className="font-medium text-sm leading-tight flex-1 mt-1 z-10">{p.name}</p>
+              <p className="font-display text-xl text-primary z-10">{formatDhs(Number(p.price))}</p>
             </button>
           ))}
           {filtered.length === 0 && (
@@ -530,13 +527,20 @@ function CaissePage() {
           <div className="pos-card p-6 border-sage animate-in slide-in-from-bottom duration-300 print-zone">
             {/* TICKET HEADER */}
             <div className="flex flex-col items-center mb-6 text-center">
-              <img src="/logo.png" alt="Mums'Home" className="h-16 mb-2" />
+              {user?.tenant_logo ? (
+                <img src={user.tenant_logo} alt={user?.tenant_name || "Logo"} className="h-16 mb-2 object-contain" />
+              ) : (
+                <div className="h-16 w-16 mb-2 rounded-md bg-primary/10 flex items-center justify-center">
+                  <span className="font-display font-bold text-primary text-2xl">
+                    {(user?.tenant_name || settings.center_name || "Logo").charAt(0).toUpperCase()}
+                  </span>
+                </div>
+              )}
               <div className="space-y-1">
-                <h3 className="font-display text-2xl font-bold text-primary leading-none">Mums'Home</h3>
-                <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-sans">Parentalité & Co</p>
+                <h3 className="font-display text-2xl font-bold text-primary leading-none">{user?.tenant_name || settings.center_name || "POS"}</h3>
               </div>
               <div className="mt-4 text-[10px] text-muted-foreground uppercase tracking-wider space-y-0.5">
-                <p className="font-bold text-primary/80">{settings.center_name || "Mums'Home"}</p>
+                <p className="font-bold text-primary/80">{user?.tenant_name || settings.center_name}</p>
                 <p>{settings.center_address || "Casablanca, Maroc"}</p>
                 <p>Tél: {settings.center_phone || "+212 6 XX XX XX XX"}</p>
                 {(settings.center_ice || settings.center_if || settings.center_rc) && (
@@ -613,13 +617,12 @@ function CaissePage() {
             <div className="mt-10 pt-6 border-t border-border text-center space-y-4">
               <div className="space-y-1">
                 <p className="text-xs font-medium">Merci de votre visite !</p>
-                <p className="text-[10px] text-muted-foreground">À bientôt chez Mums'Home</p>
+                <p className="text-[10px] text-muted-foreground">À bientôt chez {user?.tenant_name || settings.center_name || "nous"}</p>
               </div>
               <div className="flex flex-col items-center gap-1">
                 <div className="w-16 h-16 bg-muted rounded-md flex items-center justify-center">
                   <p className="text-[8px] text-muted-foreground text-center px-1">QR CODE<br/>BIENTÔT</p>
                 </div>
-                <p className="text-[9px] text-muted-foreground">www.mumshome.ma</p>
               </div>
             </div>
 

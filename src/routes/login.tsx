@@ -77,9 +77,8 @@ function LoginPage() {
       <div className="relative z-10 w-full max-w-md">
         <div className="bg-white/70 backdrop-blur-xl border border-white/20 p-8 rounded-3xl shadow-2xl shadow-black/20">
           <div className="text-center mb-8">
-            <img src={logo} alt="Logo Mums'Home" className="w-24 h-24 mx-auto mb-4 drop-shadow-sm" />
-            <h1 className="font-display text-3xl text-primary mb-1">Mums'Home</h1>
-            <p className="text-muted-foreground text-sm uppercase tracking-widest">Parentalité & Co</p>
+            <h1 className="font-display text-3xl text-primary mb-1">Espace de Connexion</h1>
+            <p className="text-muted-foreground text-sm uppercase tracking-widest">Plateforme de Gestion</p>
           </div>
 
           <Tabs defaultValue="signin">
@@ -244,8 +243,8 @@ function LoginPage() {
           </Tabs>
 
           <div className="mt-8 pt-6 border-t border-white/20 text-center">
-            <p className="text-xs text-muted-foreground/60">
-              © {new Date().getFullYear()} Mums'Home POS · Local-first Architecture
+            <p className="text-[10px] text-muted-foreground">
+              © {new Date().getFullYear()} POS & RDV · Plateforme Multi-Centres
             </p>
           </div>
         </div>

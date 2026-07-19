@@ -53,10 +53,9 @@ export function ZReportModal({ open, onOpenChange, day, sales, totals, settings 
         {/* PRINTABLE AREA */}
         <div className="space-y-6 py-4 font-mono text-sm print:m-0 print:p-0 print:block print-zone">
           <div className="flex flex-col items-center mb-4 text-center">
-            <img src="/logo.png" alt="Logo" className="h-12 mb-2" />
             <div className="space-y-0.5">
               <h3 className="font-display text-lg font-bold text-primary">
-                {settings.center_name || "Mums'Home"}
+                {settings.center_name || "Rapport Z"}
               </h3>
               <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
                 {settings.center_address || "Casablanca, Maroc"}

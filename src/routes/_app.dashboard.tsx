@@ -27,7 +27,7 @@ function DashboardPage() {
           <LayoutDashboard className="w-10 h-10" />
           Bureau Principal
         </h1>
-        <p className="text-muted-foreground">Bienvenue dans votre interface de gestion Mums'Home.</p>
+        <p className="text-muted-foreground">Bienvenue dans votre interface de gestion.</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-4">
@@ -53,7 +53,7 @@ function DashboardPage() {
       </div>
       
       <footer className="pt-12 text-center">
-        <p className="text-xs text-muted-foreground uppercase tracking-widest">Mums'Home POS — Système de Gestion Intégré</p>
+        <p className="text-xs text-muted-foreground uppercase tracking-widest">Plateforme de Gestion Intégrée</p>
       </footer>
     </div>
   );

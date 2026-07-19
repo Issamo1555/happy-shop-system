@@ -9,6 +9,7 @@ interface AuthState {
   loading: boolean;
   isAuthenticated: boolean;
   isAdmin: boolean;
+  isSuperAdmin: boolean;
   isStaff: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, fullName: string, inviteCode: string) => Promise<void>;
@@ -125,8 +126,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     roles,
     loading,
     isAuthenticated: !!user,
-    isAdmin: roles.includes("admin"),
-    isStaff: roles.includes("admin") || roles.includes("cashier"),
+    isAdmin: roles.includes("admin") || roles.includes("super_admin" as any),
+    isSuperAdmin: roles.includes("super_admin" as any),
+    isStaff: roles.includes("admin") || roles.includes("cashier") || roles.includes("super_admin" as any) || roles.includes("sales" as any),
     signIn,
     signUp,
     signOut,

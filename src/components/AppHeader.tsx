@@ -1,7 +1,7 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
-import { Heart, ShoppingBag, Users, Calendar, Receipt, LogOut, Package, HardDrive, Database, User, Camera, Upload, Settings, LayoutDashboard, LifeBuoy } from "lucide-react";
+import { Heart, ShoppingBag, Users, Calendar, Receipt, LogOut, Package, HardDrive, Database, User, Camera, Upload, Settings, LayoutDashboard, LifeBuoy, Building2, PhoneCall } from "lucide-react";
 import { toast } from "sonner";
 import { downloadDatabaseAction } from "@/lib/actions";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
@@ -19,11 +19,13 @@ const navItems = [
   { to: "/historique", label: "Historique", icon: Receipt },
   { to: "/tickets", label: "Tickets", icon: LifeBuoy },
   { to: "/settings", label: "Paramètres", icon: Settings, adminOnly: true },
-  { to: "/db-admin", label: "Base de données", icon: Database, adminOnly: true },
+  { to: "/db-admin", label: "Base de données", icon: Database, superAdminOnly: true },
+  { to: "/admin-tenants", label: "Centres (Tenants)", icon: Building2, superAdminOnly: true },
+  { to: "/crm", label: "Prospection", icon: PhoneCall, crmAccessOnly: true },
 ] as const;
 
-export function AppHeader() {
-  const { user, roles, isAdmin, signOut, updateProfile, uploadAvatar } = useAuth();
+    export function AppHeader() {
+  const { user, roles, isAdmin, isSuperAdmin, signOut, updateProfile, uploadAvatar } = useAuth();
   const navigate = useNavigate();
   const [showProfile, setShowProfile] = useState(false);
   const [email, setEmail] = useState("");
@@ -105,16 +107,23 @@ export function AppHeader() {
     <header className="border-b border-border bg-card/80 backdrop-blur sticky top-0 z-40">
       <div className="max-w-[1400px] mx-auto px-4 lg:px-6 h-16 flex items-center gap-6">
         <Link to="/dashboard" className="flex items-center gap-3">
-          <img src={logo} alt="Logo" className="w-10 h-10 drop-shadow-sm" />
+          {user?.tenant_logo ? (
+            <img src={user.tenant_logo} alt="Logo" className="w-10 h-10 drop-shadow-sm rounded-md" />
+          ) : (
+            <img src={logo} alt="Logo" className="w-10 h-10 drop-shadow-sm" />
+          )}
           <div className="hidden sm:block">
-            <p className="font-display text-lg leading-none text-primary">Mums'Home</p>
-            <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Parentalité & Co</p>
+            <p className="font-display text-lg leading-none" style={{ color: user?.tenant_color || "var(--primary)" }}>
+              {user?.tenant_name || "Mums'Home"}
+            </p>
           </div>
         </Link>
 
         <nav className="flex items-center gap-1 flex-1">
           {navItems.map((item) => {
             if (item.adminOnly && !isAdmin) return null;
+            if ((item as any).superAdminOnly && !isSuperAdmin) return null;
+            if ((item as any).crmAccessOnly && user?.role !== 'super_admin' && user?.role !== 'sales') return null;
             const Icon = item.icon;
             return (
               <Link

@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { getProductsAction, createProductAction, updateProductAction, toggleProductActiveAction, deleteProductAction, getCategoriesAction, createCategoryAction, updateCategoryAction, deleteCategoryAction } from "@/lib/actions";
+import { uploadTicketImageAction, createProductAction, updateProductAction, toggleProductActiveAction, deleteProductAction, createCategoryAction, updateCategoryAction, deleteCategoryAction, getProductsAction, getCategoriesAction } from "@/lib/actions";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,8 +29,8 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { CATEGORY_ORDER, formatDhs } from "@/lib/format";
-import { Plus, Pencil, Save, X, Package, Trash2, Search, Settings, Tag } from "lucide-react";
+import { formatDhs } from "@/lib/format";
+import { Plus, Pencil, Save, X, Package, Trash2, Search, Settings, Tag, ImagePlus, Loader2 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import {
@@ -55,6 +55,7 @@ interface Product {
   active: boolean;
   sort_order: number;
   pack_sessions: number | null;
+  image_url?: string;
 }
 
 interface Category {
@@ -63,6 +64,7 @@ interface Category {
   slug: string;
   sort_order: number;
   active: boolean;
+  image_url?: string;
 }
 
 function CataloguePage() {
@@ -82,10 +84,11 @@ function CataloguePage() {
     active: true,
     sort_order: 0,
     pack_sessions: null,
+    image_url: "",
   });
 
   const [isCategoryAddOpen, setIsCategoryAddOpen] = useState(false);
-  const [newCategory, setNewCategory] = useState({ name: "", sort_order: 0 });
+  const [newCategory, setNewCategory] = useState<{name:string, sort_order:number, image_url?:string}>({ name: "", sort_order: 0, image_url: "" });
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
   const [editCategoryForm, setEditCategoryForm] = useState<Partial<Category>>({});
 
@@ -96,9 +99,10 @@ function CataloguePage() {
     setLoading(true);
     try {
       console.log("🌐 Frontend: Appel de fetchAll...");
+      const tenantData = { data: { tenantId: user?.tenant_id } };
       const [prodData, catData] = await Promise.all([
-        getProductsAction(),
-        getCategoriesAction()
+        getProductsAction(tenantData),
+        getCategoriesAction(tenantData)
       ]);
       console.log("🌐 Frontend: Données reçues - Produits:", prodData?.length, "Catégories:", catData?.length);
       setProducts(prodData as Product[]);
@@ -117,11 +121,38 @@ function CataloguePage() {
 
   useEffect(() => {
     fetchAll();
-  }, []);
+  }, [user?.tenant_id]);
+
+  const handleImageUpload = async (file: File, isProduct: boolean) => {
+    if (!user) return null;
+    const reader = new FileReader();
+    return new Promise<string>((resolve, reject) => {
+      reader.onload = async () => {
+        try {
+          const res = await uploadTicketImageAction({
+            data: {
+              userId: user.id,
+              base64: reader.result as string,
+              filename: file.name
+            }
+          });
+          if (res.url) {
+            resolve(res.url);
+          } else {
+            reject("Erreur upload");
+          }
+        } catch(e) {
+          reject(e);
+        }
+      };
+      reader.onerror = () => reject("Erreur lecture fichier");
+      reader.readAsDataURL(file);
+    });
+  };
 
   const fetchProducts = async () => {
     try {
-      const data = await getProductsAction();
+      const data = await getProductsAction({ data: { tenantId: user?.tenant_id } });
       setProducts(data as Product[]);
     } catch (err) {
       toast.error("Erreur lors du chargement des produits");
@@ -202,7 +233,7 @@ function CataloguePage() {
       await createCategoryAction({ data: { ...newCategory, adminId: user?.id } });
       toast.success("Catégorie ajoutée");
       setIsCategoryAddOpen(false);
-      setNewCategory({ name: "", sort_order: 0 });
+      setNewCategory({ name: "", sort_order: 0, image_url: "" });
       await fetchAll();
     } catch (err: any) {
       toast.error(err.message);
@@ -353,6 +384,44 @@ function CataloguePage() {
                       />
                     </div>
                   )}
+
+                  <div className="space-y-2">
+                    <Label>Image du Produit</Label>
+                    <div className="flex items-center gap-4">
+                      {newProduct.image_url ? (
+                        <div className="relative w-16 h-16 rounded border bg-muted flex items-center justify-center">
+                          <img src={newProduct.image_url} alt="Aperçu" className="max-w-full max-h-full object-contain" />
+                          <Button variant="destructive" size="icon" className="absolute -top-2 -right-2 w-5 h-5 rounded-full" onClick={() => setNewProduct({...newProduct, image_url: ""})}>
+                            <X className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="w-16 h-16 rounded border border-dashed flex flex-col items-center justify-center text-muted-foreground bg-muted/30">
+                          <ImagePlus className="w-6 h-6 mb-1" />
+                        </div>
+                      )}
+                      <div className="flex-1">
+                        <Input 
+                          type="file" 
+                          accept="image/*" 
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              toast.loading("Upload de l'image...", { id: "upload-prod" });
+                              try {
+                                const url = await handleImageUpload(file, true);
+                                setNewProduct({ ...newProduct, image_url: url });
+                                toast.success("Image ajoutée", { id: "upload-prod" });
+                              } catch(e) {
+                                toast.error("Erreur d'upload", { id: "upload-prod" });
+                              }
+                            }
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
                   <Button onClick={handleAdd} className="w-full" disabled={loading}>
                     {loading ? "Chargement..." : "Enregistrer"}
                   </Button>
@@ -408,6 +477,31 @@ function CataloguePage() {
                                 />
                               </div>
                             )}
+                            <div className="flex items-center gap-2 mt-2">
+                              {editForm.image_url ? (
+                                <img src={editForm.image_url} alt="img" className="w-8 h-8 rounded border object-contain" />
+                              ) : (
+                                <div className="w-8 h-8 rounded border border-dashed flex items-center justify-center text-muted-foreground"><ImagePlus className="w-4 h-4"/></div>
+                              )}
+                              <Input 
+                                type="file" 
+                                accept="image/*" 
+                                className="h-8 text-xs flex-1"
+                                onChange={async (e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file) {
+                                    toast.loading("Upload...", { id: "edit-prod" });
+                                    try {
+                                      const url = await handleImageUpload(file, true);
+                                      setEditForm({ ...editForm, image_url: url });
+                                      toast.success("Image modifiée", { id: "edit-prod" });
+                                    } catch(err) {
+                                      toast.error("Erreur", { id: "edit-prod" });
+                                    }
+                                  }
+                                }}
+                              />
+                            </div>
                           </div>
                         ) : (
                           <div className="flex flex-col">
@@ -567,11 +661,36 @@ function CataloguePage() {
                     <Input
                       id="cat-sort"
                       type="number"
-                      value={newCategory.sort_order}
-                      onChange={(e) => setNewCategory({ ...newCategory, sort_order: Number(e.target.value) })}
+                      value={newCategory.sort_order || ""}
+                      onChange={(e) => setNewCategory({ ...newCategory, sort_order: Number(e.target.value) || 0 })}
                     />
                   </div>
-                  <Button onClick={handleAddCategory} className="w-full" disabled={loading}>
+                    
+                    <div className="space-y-2">
+                      <Label>Image (Icône)</Label>
+                      <div className="flex items-center gap-2">
+                        {newCategory.image_url && <img src={newCategory.image_url} className="w-10 h-10 object-contain rounded border" alt="icon"/>}
+                        <Input 
+                          type="file" 
+                          accept="image/*" 
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              toast.loading("Upload...", { id: "new-cat" });
+                              try {
+                                const url = await handleImageUpload(file, false);
+                                setNewCategory({ ...newCategory, image_url: url });
+                                toast.success("Image ajoutée", { id: "new-cat" });
+                              } catch(err) {
+                                toast.error("Erreur", { id: "new-cat" });
+                              }
+                            }
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    <Button onClick={handleAddCategory} className="w-full mt-4" disabled={loading}>
                     {loading ? "Chargement..." : "Enregistrer"}
                   </Button>
                 </div>

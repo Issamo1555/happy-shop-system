@@ -77,11 +77,11 @@ function AgendaPage() {
     let data: any[] = [];
     if (view === "day") {
       const dayStr = format(day, "yyyy-MM-dd");
-      data = await getAppointmentsAction({ data: dayStr }) as any[];
+      data = await getAppointmentsAction({ data: { date: dayStr, tenantId: user?.tenant_id } }) as any[];
     } else {
       const start = view === "week" ? startOfWeek(day, { weekStartsOn: 1 }) : startOfMonth(day);
       const end = view === "week" ? endOfWeek(day, { weekStartsOn: 1 }) : endOfMonth(day);
-      data = await getAppointmentsRangeAction({ data: { from: format(start, "yyyy-MM-dd"), to: format(end, "yyyy-MM-dd") } }) as any[];
+      data = await getAppointmentsRangeAction({ data: { from: format(start, "yyyy-MM-dd"), to: format(end, "yyyy-MM-dd"), tenantId: user?.tenant_id } }) as any[];
     }
 
     setAppts(data);
@@ -89,13 +89,13 @@ function AgendaPage() {
 
   useEffect(() => {
     (async () => {
-      const pr = await getProductsAction();
+      const pr = await getProductsAction({ data: { tenantId: user?.tenant_id } });
       setProducts(pr as unknown as Product[]);
-      const cl = await getClientsAction();
+      const cl = await getClientsAction({ data: { tenantId: user?.tenant_id } });
       setClients(cl as unknown as Client[]);
     })();
-  }, []);
-  useEffect(() => { load(); }, [day, view]);
+  }, [user?.tenant_id]);
+  useEffect(() => { load(); }, [day, view, user?.tenant_id]);
 
   const setStatus = async (id: string, s: Appt["status"]) => {
     try {

@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as IndexRouteImport } from './routes/index'
@@ -17,11 +18,18 @@ import { Route as AppSettingsRouteImport } from './routes/_app.settings'
 import { Route as AppHistoriqueRouteImport } from './routes/_app.historique'
 import { Route as AppDbAdminRouteImport } from './routes/_app.db-admin'
 import { Route as AppDashboardRouteImport } from './routes/_app.dashboard'
+import { Route as AppCrmRouteImport } from './routes/_app.crm'
 import { Route as AppClientsRouteImport } from './routes/_app.clients'
 import { Route as AppCatalogueRouteImport } from './routes/_app.catalogue'
 import { Route as AppCaisseRouteImport } from './routes/_app.caisse'
 import { Route as AppAgendaRouteImport } from './routes/_app.agenda'
+import { Route as AppAdminTenantsRouteImport } from './routes/_app.admin-tenants'
 
+const PricingRoute = PricingRouteImport.update({
+  id: '/pricing',
+  path: '/pricing',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
@@ -61,6 +69,11 @@ const AppDashboardRoute = AppDashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => AppRoute,
 } as any)
+const AppCrmRoute = AppCrmRouteImport.update({
+  id: '/crm',
+  path: '/crm',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppClientsRoute = AppClientsRouteImport.update({
   id: '/clients',
   path: '/clients',
@@ -81,14 +94,22 @@ const AppAgendaRoute = AppAgendaRouteImport.update({
   path: '/agenda',
   getParentRoute: () => AppRoute,
 } as any)
+const AppAdminTenantsRoute = AppAdminTenantsRouteImport.update({
+  id: '/admin-tenants',
+  path: '/admin-tenants',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/pricing': typeof PricingRoute
+  '/admin-tenants': typeof AppAdminTenantsRoute
   '/agenda': typeof AppAgendaRoute
   '/caisse': typeof AppCaisseRoute
   '/catalogue': typeof AppCatalogueRoute
   '/clients': typeof AppClientsRoute
+  '/crm': typeof AppCrmRoute
   '/dashboard': typeof AppDashboardRoute
   '/db-admin': typeof AppDbAdminRoute
   '/historique': typeof AppHistoriqueRoute
@@ -98,10 +119,13 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/pricing': typeof PricingRoute
+  '/admin-tenants': typeof AppAdminTenantsRoute
   '/agenda': typeof AppAgendaRoute
   '/caisse': typeof AppCaisseRoute
   '/catalogue': typeof AppCatalogueRoute
   '/clients': typeof AppClientsRoute
+  '/crm': typeof AppCrmRoute
   '/dashboard': typeof AppDashboardRoute
   '/db-admin': typeof AppDbAdminRoute
   '/historique': typeof AppHistoriqueRoute
@@ -113,10 +137,13 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
+  '/pricing': typeof PricingRoute
+  '/_app/admin-tenants': typeof AppAdminTenantsRoute
   '/_app/agenda': typeof AppAgendaRoute
   '/_app/caisse': typeof AppCaisseRoute
   '/_app/catalogue': typeof AppCatalogueRoute
   '/_app/clients': typeof AppClientsRoute
+  '/_app/crm': typeof AppCrmRoute
   '/_app/dashboard': typeof AppDashboardRoute
   '/_app/db-admin': typeof AppDbAdminRoute
   '/_app/historique': typeof AppHistoriqueRoute
@@ -128,10 +155,13 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/login'
+    | '/pricing'
+    | '/admin-tenants'
     | '/agenda'
     | '/caisse'
     | '/catalogue'
     | '/clients'
+    | '/crm'
     | '/dashboard'
     | '/db-admin'
     | '/historique'
@@ -141,10 +171,13 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/login'
+    | '/pricing'
+    | '/admin-tenants'
     | '/agenda'
     | '/caisse'
     | '/catalogue'
     | '/clients'
+    | '/crm'
     | '/dashboard'
     | '/db-admin'
     | '/historique'
@@ -155,10 +188,13 @@ export interface FileRouteTypes {
     | '/'
     | '/_app'
     | '/login'
+    | '/pricing'
+    | '/_app/admin-tenants'
     | '/_app/agenda'
     | '/_app/caisse'
     | '/_app/catalogue'
     | '/_app/clients'
+    | '/_app/crm'
     | '/_app/dashboard'
     | '/_app/db-admin'
     | '/_app/historique'
@@ -170,10 +206,18 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AppRoute: typeof AppRouteWithChildren
   LoginRoute: typeof LoginRoute
+  PricingRoute: typeof PricingRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/pricing': {
+      id: '/pricing'
+      path: '/pricing'
+      fullPath: '/pricing'
+      preLoaderRoute: typeof PricingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
@@ -230,6 +274,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppDashboardRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/crm': {
+      id: '/_app/crm'
+      path: '/crm'
+      fullPath: '/crm'
+      preLoaderRoute: typeof AppCrmRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/clients': {
       id: '/_app/clients'
       path: '/clients'
@@ -258,14 +309,23 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAgendaRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/admin-tenants': {
+      id: '/_app/admin-tenants'
+      path: '/admin-tenants'
+      fullPath: '/admin-tenants'
+      preLoaderRoute: typeof AppAdminTenantsRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
 interface AppRouteChildren {
+  AppAdminTenantsRoute: typeof AppAdminTenantsRoute
   AppAgendaRoute: typeof AppAgendaRoute
   AppCaisseRoute: typeof AppCaisseRoute
   AppCatalogueRoute: typeof AppCatalogueRoute
   AppClientsRoute: typeof AppClientsRoute
+  AppCrmRoute: typeof AppCrmRoute
   AppDashboardRoute: typeof AppDashboardRoute
   AppDbAdminRoute: typeof AppDbAdminRoute
   AppHistoriqueRoute: typeof AppHistoriqueRoute
@@ -274,10 +334,12 @@ interface AppRouteChildren {
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppAdminTenantsRoute: AppAdminTenantsRoute,
   AppAgendaRoute: AppAgendaRoute,
   AppCaisseRoute: AppCaisseRoute,
   AppCatalogueRoute: AppCatalogueRoute,
   AppClientsRoute: AppClientsRoute,
+  AppCrmRoute: AppCrmRoute,
   AppDashboardRoute: AppDashboardRoute,
   AppDbAdminRoute: AppDbAdminRoute,
   AppHistoriqueRoute: AppHistoriqueRoute,
@@ -291,6 +353,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRoute: AppRouteWithChildren,
   LoginRoute: LoginRoute,
+  PricingRoute: PricingRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

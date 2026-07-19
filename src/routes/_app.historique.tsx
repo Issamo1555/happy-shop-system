@@ -87,8 +87,8 @@ function HistoryPage() {
       end: format(endDate, "yyyy-MM-dd")
     };
     const [salesData, settingsData] = await Promise.all([
-      getSalesAction({ data: range }),
-      getSettingsAction()
+      getSalesAction({ data: { ...range, tenantId: user?.tenant_id } }),
+      getSettingsAction({ data: { tenantId: user?.tenant_id } })
     ]);
     const mappedSales = (salesData as any[]).map((r: any) => ({
       ...r,
@@ -104,7 +104,7 @@ function HistoryPage() {
     setSettings(settingsData as Record<string, string>);
     setCurrentPage(1);
   };
-  useEffect(() => { load(); }, [startDate, endDate]);
+  useEffect(() => { load(); }, [startDate, endDate, user?.tenant_id]);
 
   const openDetail = async (s: Sale) => {
     setOpened(s);

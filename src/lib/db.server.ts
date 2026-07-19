@@ -129,8 +129,64 @@ export const db = {
   }
 };
 
+// ============================================
+// MULTI-TENANT: Check if tenant_id column exists
+// ============================================
+const hasTenantColumn = async (): Promise<boolean> => {
+  try {
+    if (isMySQL && mysqlPool) {
+      const cols = await db.query("SHOW COLUMNS FROM users LIKE 'tenant_id'");
+      return cols.length > 0;
+    } else {
+      const cols = await db.query("PRAGMA table_info(users)") as any[];
+      return cols.some((c: any) => c.name === 'tenant_id');
+    }
+  } catch {
+    return false;
+  }
+};
+
 export const initServerDb = async () => {
+  // ============================================
+  // 1. CREATE ALL TABLES (including tenants)
+  // ============================================
   const sqlSchema = isMySQL ? [
+    // TENANTS TABLE (new for multi-tenant)
+    `CREATE TABLE IF NOT EXISTS tenants (
+      id VARCHAR(50) PRIMARY KEY,
+      name VARCHAR(255) NOT NULL,
+      slug VARCHAR(100) NOT NULL UNIQUE,
+      logo_url TEXT,
+      primary_color VARCHAR(20) DEFAULT '#D4A574',
+      invite_code VARCHAR(50),
+      active BOOLEAN NOT NULL DEFAULT 1,
+      subscription_plan_id VARCHAR(50),
+      subscription_end_date DATETIME,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS pricing_offers (
+      id VARCHAR(50) PRIMARY KEY,
+      title VARCHAR(255) NOT NULL,
+      price DECIMAL(10,2) NOT NULL,
+      billing_cycle VARCHAR(20) NOT NULL DEFAULT 'monthly',
+      description TEXT,
+      features TEXT,
+      active BOOLEAN NOT NULL DEFAULT 1,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS prospects (
+      id VARCHAR(50) PRIMARY KEY,
+      name VARCHAR(255) NOT NULL,
+      phone VARCHAR(50),
+      email VARCHAR(255),
+      city VARCHAR(100),
+      specialty VARCHAR(100),
+      status VARCHAR(50) DEFAULT 'nouveau',
+      assigned_to VARCHAR(50),
+      notes TEXT,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`,
     `CREATE TABLE IF NOT EXISTS products (
       id VARCHAR(50) PRIMARY KEY,
       name VARCHAR(255) NOT NULL,
@@ -144,6 +200,7 @@ export const initServerDb = async () => {
       active BOOLEAN NOT NULL DEFAULT 1,
       deleted TINYINT(1) DEFAULT 0,
       sort_order INTEGER NOT NULL DEFAULT 0,
+      image_url TEXT,
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
     )`,
     `CREATE TABLE IF NOT EXISTS clients (
@@ -223,6 +280,7 @@ export const initServerDb = async () => {
       slug VARCHAR(100) NOT NULL UNIQUE,
       sort_order INTEGER NOT NULL DEFAULT 0,
       active BOOLEAN NOT NULL DEFAULT 1,
+      image_url TEXT,
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
     )`,
     `CREATE TABLE IF NOT EXISTS settings (
@@ -243,23 +301,8 @@ export const initServerDb = async () => {
       updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
     )`
   ] : [
-    // SQLite Schema (existing one)
-    `CREATE TABLE IF NOT EXISTS products (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      description TEXT,
-      category TEXT NOT NULL,
-      type TEXT NOT NULL,
-      price REAL NOT NULL,
-      pack_sessions INTEGER,
-      duration_min INTEGER,
-      bookable BOOLEAN NOT NULL DEFAULT 0,
-      active BOOLEAN NOT NULL DEFAULT 1,
-      deleted INTEGER DEFAULT 0,
-      sort_order INTEGER NOT NULL DEFAULT 0,
-      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-    )`,
-    // ... (rest of SQLite schema)
+    // SQLite Schema
+    // (empty - handled below via sqliteDb.exec)
   ];
 
   if (isMySQL) {
@@ -269,6 +312,41 @@ export const initServerDb = async () => {
   } else {
     // Original SQLite execution
     sqliteDb.exec(`
+      CREATE TABLE IF NOT EXISTS tenants (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        slug TEXT NOT NULL UNIQUE,
+        logo_url TEXT,
+        primary_color TEXT DEFAULT '#D4A574',
+        invite_code TEXT,
+        active BOOLEAN NOT NULL DEFAULT 1,
+        subscription_plan_id TEXT,
+        subscription_end_date DATETIME,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE TABLE IF NOT EXISTS pricing_offers (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        price DECIMAL(10,2) NOT NULL,
+        billing_cycle TEXT NOT NULL DEFAULT 'monthly',
+        description TEXT,
+        features TEXT,
+        active BOOLEAN NOT NULL DEFAULT 1,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE TABLE IF NOT EXISTS prospects (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        phone TEXT,
+        email TEXT,
+        city TEXT,
+        specialty TEXT,
+        status TEXT DEFAULT 'nouveau',
+        assigned_to TEXT,
+        notes TEXT,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
       CREATE TABLE IF NOT EXISTS products (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
@@ -282,6 +360,7 @@ export const initServerDb = async () => {
         active BOOLEAN NOT NULL DEFAULT 1,
         deleted INTEGER DEFAULT 0,
         sort_order INTEGER NOT NULL DEFAULT 0,
+        image_url TEXT,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
       CREATE TABLE IF NOT EXISTS clients (
@@ -361,12 +440,15 @@ export const initServerDb = async () => {
         slug TEXT NOT NULL UNIQUE,
         sort_order INTEGER NOT NULL DEFAULT 0,
         active BOOLEAN NOT NULL DEFAULT 1,
+        image_url TEXT,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
       CREATE TABLE IF NOT EXISTS settings (
-        \`key\` TEXT PRIMARY KEY,
+        \`key\` TEXT,
         value TEXT,
-        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        tenant_id TEXT DEFAULT 'default-tenant',
+        PRIMARY KEY (tenant_id, \`key\`)
       );
       CREATE TABLE IF NOT EXISTS tickets (
         id TEXT PRIMARY KEY,
@@ -389,22 +471,120 @@ export const initServerDb = async () => {
     `);
   }
 
-  // Insert default admin
+  // ============================================
+  // 2. MULTI-TENANT MIGRATION
+  // ============================================
+  const alreadyMigrated = await hasTenantColumn();
+
+  if (!alreadyMigrated) {
+    console.log("🔄 Running multi-tenant migration — adding tenant_id to all tables...");
+
+    // Create default tenant
+    const defaultTenantId = "default-tenant";
+    try {
+      await db.execute(
+        "INSERT INTO tenants (id, name, slug, invite_code, active) VALUES (?, ?, ?, ?, 1)",
+        [defaultTenantId, "Mums'Home", "mums-home", "MUMS2026"]
+      );
+    } catch (e: any) {
+      // Tenant might already exist if partial migration happened before
+      console.log("Default tenant may already exist:", e.message);
+    }
+
+    // Add tenant_id column to all business tables
+    const tablesToMigrate = [
+      "products", "clients", "appointments", "sales", "sale_items",
+      "client_packs", "pack_consumptions", "users", "categories", "tickets"
+    ];
+
+    for (const table of tablesToMigrate) {
+      try {
+        if (isMySQL) {
+          await db.execute(`ALTER TABLE ${table} ADD COLUMN tenant_id VARCHAR(50) DEFAULT 'default-tenant'`);
+        } else {
+          await db.execute(`ALTER TABLE ${table} ADD COLUMN tenant_id TEXT DEFAULT 'default-tenant'`);
+        }
+        // Set existing rows to default tenant
+        await db.execute(`UPDATE ${table} SET tenant_id = ? WHERE tenant_id IS NULL OR tenant_id = ''`, [defaultTenantId]);
+        console.log(`  ✅ ${table} — tenant_id added`);
+      } catch (e: any) {
+        console.log(`  ⚠️ ${table} — column may already exist: ${e.message}`);
+      }
+    }
+
+    // Handle settings table: add tenant_id and change PK to composite
+    try {
+      if (isMySQL) {
+        await db.execute("ALTER TABLE settings ADD COLUMN tenant_id VARCHAR(50) DEFAULT 'default-tenant'");
+        // Change PK from `key` to (tenant_id, key)
+        try {
+          await db.execute("ALTER TABLE settings DROP PRIMARY KEY, ADD PRIMARY KEY (tenant_id, `key`)");
+        } catch (e: any) {
+          console.log("  ⚠️ settings PK change may have already been applied:", e.message);
+        }
+      } else {
+        await db.execute("ALTER TABLE settings ADD COLUMN tenant_id TEXT DEFAULT 'default-tenant'");
+      }
+      await db.execute("UPDATE settings SET tenant_id = ? WHERE tenant_id IS NULL OR tenant_id = ''", [defaultTenantId]);
+      console.log("  ✅ settings — tenant_id added");
+    } catch (e: any) {
+      console.log("  ⚠️ settings — column may already exist:", e.message);
+    }
+
+    // Create indexes for tenant_id
+    try {
+      if (isMySQL) {
+        for (const table of [...tablesToMigrate, "settings"]) {
+          try {
+            await db.execute(`CREATE INDEX idx_${table}_tenant ON ${table}(tenant_id)`);
+          } catch { /* index may already exist */ }
+        }
+      } else {
+        for (const table of [...tablesToMigrate, "settings"]) {
+          try {
+            sqliteDb.exec(`CREATE INDEX IF NOT EXISTS idx_${table}_tenant ON ${table}(tenant_id)`);
+          } catch { /* index may already exist */ }
+        }
+      }
+    } catch { /* ignore index errors */ }
+
+    console.log("✅ Multi-tenant migration complete!");
+  }
+
+  // ============================================
+  // 3. INSERT DEFAULT ADMIN (original logic)
+  // ============================================
   const adminEmail = "admin@mums.home";
   const admin = await db.queryOne("SELECT id, password FROM users WHERE email = ?", [adminEmail]);
   
   if (!admin) {
     const hashedPassword = bcrypt.hashSync("admin123", 10);
     await db.execute(
-      "INSERT INTO users (id, email, password, full_name, role) VALUES (?, ?, ?, ?, ?)",
-      ["admin-id", adminEmail, hashedPassword, "Administrateur", "admin"]
+      "INSERT INTO users (id, email, password, full_name, role, tenant_id) VALUES (?, ?, ?, ?, ?, ?)",
+      ["admin-id", adminEmail, hashedPassword, "Administrateur", "admin", "default-tenant"]
     );
   } else if (!admin.password.startsWith("$2")) {
     const hashedPassword = bcrypt.hashSync(admin.password, 10);
     await db.execute("UPDATE users SET password = ? WHERE id = ?", [hashedPassword, admin.id]);
   }
 
-  // Seed default settings
+  // ============================================
+  // 4. INSERT SUPER ADMIN (new for multi-tenant)
+  // ============================================
+  const superAdminEmail = "superadmin@posrdv.com";
+  const superAdmin = await db.queryOne("SELECT id FROM users WHERE email = ?", [superAdminEmail]);
+  if (!superAdmin) {
+    const hashedPassword = bcrypt.hashSync("SuperAdmin2026!", 10);
+    await db.execute(
+      "INSERT INTO users (id, email, password, full_name, role, tenant_id) VALUES (?, ?, ?, ?, ?, ?)",
+      ["super-admin-id", superAdminEmail, hashedPassword, "Super Admin", "super_admin", "default-tenant"]
+    );
+    console.log("👑 Super admin created: superadmin@posrdv.com / SuperAdmin2026!");
+  }
+
+  // ============================================
+  // 5. SEED DEFAULT SETTINGS (scoped to default tenant)
+  // ============================================
   const defaults = {
     "center_name": "CENTRE DE BIEN-ÊTRE & ACCOMPAGNEMENT",
     "center_address": "CASABLANCA, MAROC",
@@ -422,14 +602,25 @@ export const initServerDb = async () => {
   };
 
   for (const [key, value] of Object.entries(defaults)) {
-    const existing = await db.queryOne("SELECT `key` FROM settings WHERE `key` = ?", [key]);
+    const existing = await db.queryOne(
+      "SELECT `key` FROM settings WHERE `key` = ? AND tenant_id = ?",
+      [key, "default-tenant"]
+    );
     if (!existing) {
-      await db.execute("INSERT INTO settings (`key`, value) VALUES (?, ?)", [key, value]);
+      await db.execute(
+        "INSERT INTO settings (`key`, value, tenant_id) VALUES (?, ?, ?)",
+        [key, value, "default-tenant"]
+      );
     }
   }
 
-  // Seed default categories if empty
-  const categoryCount = await db.queryOne("SELECT COUNT(*) as count FROM categories");
+  // ============================================
+  // 6. SEED DEFAULT CATEGORIES (scoped to default tenant)
+  // ============================================
+  const categoryCount = await db.queryOne(
+    "SELECT COUNT(*) as count FROM categories WHERE tenant_id = ?",
+    ["default-tenant"]
+  );
   const count = categoryCount ? (Number(categoryCount.count) || 0) : 0;
   if (count === 0) {
     console.log("🌱 Seeding default categories...");
@@ -448,8 +639,8 @@ export const initServerDb = async () => {
     ];
     for (const cat of defaultCategories) {
       await db.execute(
-        "INSERT INTO categories (id, name, slug, sort_order, active) VALUES (?, ?, ?, ?, 1)",
-        [cat.id, cat.name, cat.slug, cat.sort_order]
+        "INSERT INTO categories (id, name, slug, sort_order, active, tenant_id) VALUES (?, ?, ?, ?, 1, ?)",
+        [cat.id, cat.name, cat.slug, cat.sort_order, "default-tenant"]
       );
     }
   }

@@ -24,7 +24,7 @@ function SettingsPage() {
   const fetchSettings = async () => {
     setLoading(true);
     try {
-      const data = await getSettingsAction();
+      const data = await getSettingsAction({ data: { tenantId: user?.tenant_id } });
       setSettings(data as Record<string, string>);
     } catch (err) {
       toast.error("Erreur lors du chargement des paramètres");
@@ -35,7 +35,7 @@ function SettingsPage() {
 
   useEffect(() => {
     fetchSettings();
-  }, []);
+  }, [user?.tenant_id]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();

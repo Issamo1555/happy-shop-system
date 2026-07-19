@@ -67,16 +67,16 @@ function ClientsPage() {
   const [filter, setFilter] = useState<"all" | "b2b" | "b2c">("all");
 
   const load = async () => {
-    const data = await getClientsAction();
+    const data = await getClientsAction({ data: { tenantId: user?.tenant_id } });
     setClients((data ?? []) as Client[]);
     setCurrentPage(1); // Reset page on load
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [user?.tenant_id]);
 
   const openClient = async (c: Client) => {
     setSelectedClient(c);
     const [packsData, salesData] = await Promise.all([
-      getClientPacksAction({ data: c.id }),
+      getClientPacksAction({ data: { clientId: c.id, tenantId: user?.tenant_id } }),
       getClientSalesAction({ data: { clientId: c.id, userId: user?.id || "" } })
     ]);
     setPacks((packsData ?? []) as any);

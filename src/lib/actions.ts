@@ -9,18 +9,31 @@ import { syncEventToGoogle, deleteEventFromGoogle, pullEventsFromGoogle } from "
 // SECURITY UTILITIES
 // ============================================
 
-// Verify user is authenticated and return their real role from DB
+// Verify user is authenticated and return their real role + tenant_id from DB
 const checkAuth = async (userId: string | undefined) => {
   if (!userId) throw new Error("Non authentifié");
-  const user = await db.prepare("SELECT id, role, full_name, email FROM users WHERE id = ?").get(userId) as any;
+  const user = await db.prepare("SELECT id, role, full_name, email, tenant_id FROM users WHERE id = ?").get(userId) as any;
   if (!user) throw new Error("Utilisateur introuvable");
   return user;
 };
 
-// Verify user is admin (uses DB, not client-side role)
+// Verify user is admin of their tenant (uses DB, not client-side role)
 const checkAdmin = async (userId: string | undefined) => {
   const user = await checkAuth(userId);
-  if (user.role !== "admin") throw new Error("Accès refusé : Droits administrateur requis");
+  if (user.role !== "admin" && user.role !== "super_admin") throw new Error("Accès refusé : Droits administrateur requis");
+  return user;
+};
+
+// Verify user is super_admin (platform-level admin)
+const checkSuperAdmin = async (userId: string | undefined) => {
+  const user = await checkAuth(userId);
+  if (user.role !== "super_admin") throw new Error("Accès refusé : Droits super-administrateur requis");
+  return user;
+};
+
+const checkCrmAccess = async (userId: string) => {
+  const user = await checkAuth(userId);
+  if (user.role !== "super_admin" && user.role !== "sales") throw new Error("Accès refusé : Droits CRM requis");
   return user;
 };
 
@@ -62,12 +75,11 @@ const resetLoginAttempts = (email: string) => {
 };
 
 // Whitelist of allowed table names for DB explorer
-const ALLOWED_TABLES = ["products", "clients", "appointments", "sales", "sale_items", "client_packs", "users", "categories", "settings"];
+const ALLOWED_TABLES = ["products", "clients", "appointments", "sales", "sale_items", "client_packs", "users", "categories", "settings", "tenants"];
 
 // ============================================
-// PRODUCTS
+// GENERIC SAFE ACTION WRAPPER
 // ============================================
-// Generic wrapper for server actions to ensure plain objects and error safety
 const safeAction = async (fn: () => Promise<any>) => {
   try {
     const res = await fn();
@@ -79,56 +91,24 @@ const safeAction = async (fn: () => Promise<any>) => {
   }
 };
 
-export const getProductsAction = createServerFn({ method: "GET" })
-  .handler(async () => {
-    return safeAction(() => db.prepare("SELECT * FROM products WHERE deleted = 0 ORDER BY category ASC, sort_order ASC").all());
-  });
-
-export const createProductAction = createServerFn({ method: "POST" })
-  .handler(async ({ data }: { data: any }) => {
-    console.log("Creating product with data:", data);
-    await checkAdmin(data.adminId);
-    const id = data.id || crypto.randomUUID();
-    const stmt = db.prepare(`
-      INSERT INTO products (id, name, category, type, price, active, sort_order, pack_sessions)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    await stmt.run(id, data.name, data.category, data.type, data.price, data.active ? 1 : 0, data.sort_order, data.pack_sessions || null);
-    return { success: true, id };
-  });
-
-export const updateProductAction = createServerFn({ method: "POST" })
-  .handler(async ({ data }: { data: any }) => {
-    console.log("Updating product with data:", data);
-    await checkAdmin(data.adminId);
-    const { id, name, category, type, price, active, sort_order, pack_sessions } = data;
-    await db.prepare(`
-      UPDATE products 
-      SET name = ?, category = ?, type = ?, price = ?, active = ?, sort_order = ?, pack_sessions = ?
-      WHERE id = ?
-    `).run(name, category, type, price, active ? 1 : 0, sort_order, pack_sessions || null, id);
-    return { success: true };
-  });
-
-export const toggleProductActiveAction = createServerFn({ method: "POST" })
-  .handler(async ({ data }: { data: { id: string, active: boolean, adminId: string } }) => {
-    await checkAdmin(data.adminId);
-    await db.prepare("UPDATE products SET active = ? WHERE id = ?").run(data.active ? 1 : 0, data.id);
-    return { success: true };
-  });
-
-// CATEGORIES
 // ============================================
-export const getCategoriesAction = createServerFn({ method: "GET" })
-  .handler(async () => {
-    const data = await db.prepare("SELECT * FROM categories ORDER BY sort_order ASC").all();
-    console.log("🔍 DEBUG: Catégories récupérées:", data?.length || 0, "entrées");
-    return data;
+// TENANTS (Super Admin only)
+// ============================================
+export const getTenantsAction = createServerFn({ method: "GET" })
+  .handler(async ({ data }: { data: { userId: string } }) => {
+    await checkSuperAdmin(data.userId);
+    return safeAction(() => db.prepare(`
+      SELECT t.*, 
+        (SELECT COUNT(*) FROM users WHERE tenant_id = t.id) as users_count,
+        (SELECT COUNT(*) FROM clients WHERE tenant_id = t.id) as clients_count,
+        (SELECT SUM(total) FROM sales WHERE tenant_id = t.id) as total_sales
+      FROM tenants t ORDER BY t.created_at DESC
+    `).all());
   });
 
-export const createCategoryAction = createServerFn({ method: "POST" })
+export const createTenantAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: any }) => {
-    await checkAdmin(data.adminId);
+    await checkSuperAdmin(data.userId);
     const id = crypto.randomUUID();
     const slug = data.name.toLowerCase().trim()
       .replace(/[àáâãäå]/g, "a")
@@ -139,15 +119,233 @@ export const createCategoryAction = createServerFn({ method: "POST" })
       .replace(/[ñ]/g, "n")
       .replace(/ /g, '-')
       .replace(/[^\w-]+/g, '');
-    await db.prepare("INSERT INTO categories (id, name, slug, sort_order, active) VALUES (?, ?, ?, ?, ?)")
-      .run(id, data.name, slug, Number(data.sort_order) || 0, data.active !== false ? 1 : 0);
+
+    // Check slug uniqueness
+    const existing = await db.queryOne("SELECT id FROM tenants WHERE slug = ?", [slug]);
+    if (existing) throw new Error("Un tenant avec ce slug existe déjà");
+
+    await db.execute(
+      "INSERT INTO tenants (id, name, slug, logo_url, primary_color, invite_code, active) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      [id, data.name, slug, data.logo_url || null, data.primary_color || '#D4A574', data.invite_code || null, data.active !== false ? 1 : 0]
+    );
+
+    // Create default admin for the tenant
+    if (data.admin_email && data.admin_password) {
+      const adminId = crypto.randomUUID();
+      const hashedPassword = bcrypt.hashSync(data.admin_password, 10);
+      await db.execute(
+        "INSERT INTO users (id, email, password, full_name, role, tenant_id) VALUES (?, ?, ?, ?, ?, ?)",
+        [adminId, data.admin_email, hashedPassword, data.admin_name || "Administrateur", "admin", id]
+      );
+    }
+
+    // Seed default settings for the new tenant
+    const defaults: Record<string, string> = {
+      "center_name": data.name,
+      "center_address": "",
+      "center_phone": "",
+      "center_email": data.admin_email || "",
+      "member_discount_percent": "10",
+      "google_calendar_id": "",
+      "google_client_email": "",
+      "google_private_key": "",
+      "center_ice": "",
+      "center_if": "",
+      "center_rc": "",
+      "center_patente": "",
+      "tva_percent": "20",
+    };
+    for (const [key, value] of Object.entries(defaults)) {
+      await db.execute(
+        "INSERT INTO settings (`key`, value, tenant_id) VALUES (?, ?, ?)",
+        [key, value, id]
+      );
+    }
+
+    return { success: true, id, slug };
+  });
+
+export const updateTenantAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: any }) => {
+    await checkSuperAdmin(data.userId);
+    const { id, name, logo_url, primary_color, invite_code, active } = data;
+    await db.execute(
+      "UPDATE tenants SET name = ?, logo_url = ?, primary_color = ?, invite_code = ?, active = ? WHERE id = ?",
+      [name, logo_url || null, primary_color || '#D4A574', invite_code || null, active ? 1 : 0, id]
+    );
+    return { success: true };
+  });
+
+export const toggleTenantActiveAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: { id: string, active: boolean, userId: string } }) => {
+    await checkSuperAdmin(data.userId);
+    await db.execute("UPDATE tenants SET active = ? WHERE id = ?", [data.active ? 1 : 0, data.id]);
+    return { success: true };
+  });
+
+export const getTenantUsersAction = createServerFn({ method: "GET" })
+  .handler(async ({ data }: { data: { tenantId: string, userId: string } }) => {
+    await checkSuperAdmin(data.userId);
+    return safeAction(() =>
+      db.prepare("SELECT id, email, full_name, role, tenant_id, created_at FROM users WHERE tenant_id = ? ORDER BY created_at DESC").all(data.tenantId)
+    );
+  });
+
+export const deleteTenantUserAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: { targetUserId: string, userId: string } }) => {
+    await checkSuperAdmin(data.userId);
+    // Prevent super admin from deleting themselves
+    if (data.targetUserId === data.userId) throw new Error("Impossible de supprimer votre propre compte.");
+    await db.prepare("DELETE FROM users WHERE id = ?").run(data.targetUserId);
+    return { success: true };
+  });
+
+export const resetTenantUserPasswordAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: { targetUserId: string, newPassword: string, userId: string } }) => {
+    await checkSuperAdmin(data.userId);
+    if (!data.newPassword || data.newPassword.length < 6) {
+      throw new Error("Le mot de passe doit contenir au moins 6 caractères.");
+    }
+    const hashedPassword = bcrypt.hashSync(data.newPassword, 10);
+    await db.prepare("UPDATE users SET password = ? WHERE id = ?").run(hashedPassword, data.targetUserId);
+    return { success: true };
+  });
+
+// ============================================
+// PRICING OFFERS (Public & Super Admin)
+// ============================================
+
+export const getPricingOffersAction = createServerFn({ method: "GET" })
+  .handler(async () => {
+    return safeAction(() => db.prepare("SELECT * FROM pricing_offers WHERE active = 1 ORDER BY sort_order ASC").all());
+  });
+
+export const getAdminPricingOffersAction = createServerFn({ method: "GET" })
+  .handler(async ({ data }: { data: { userId: string } }) => {
+    await checkSuperAdmin(data.userId);
+    return safeAction(() => db.prepare("SELECT * FROM pricing_offers ORDER BY sort_order ASC").all());
+  });
+
+export const createPricingOfferAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: any }) => {
+    await checkSuperAdmin(data.userId);
+    const id = crypto.randomUUID();
+    await db.execute(
+      "INSERT INTO pricing_offers (id, title, price, billing_cycle, description, features, active, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      [id, data.title, data.price, data.billing_cycle, data.description, data.features, data.active ? 1 : 0, data.sort_order || 0]
+    );
+    return { success: true };
+  });
+
+export const updatePricingOfferAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: any }) => {
+    await checkSuperAdmin(data.userId);
+    await db.execute(
+      "UPDATE pricing_offers SET title = ?, price = ?, billing_cycle = ?, description = ?, features = ?, active = ?, sort_order = ? WHERE id = ?",
+      [data.title, data.price, data.billing_cycle, data.description, data.features, data.active ? 1 : 0, data.sort_order || 0, data.id]
+    );
+    return { success: true };
+  });
+
+export const deletePricingOfferAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: { id: string, userId: string } }) => {
+    await checkSuperAdmin(data.userId);
+    await db.prepare("DELETE FROM pricing_offers WHERE id = ?").run(data.id);
+    return { success: true };
+  });
+
+export const updateTenantSubscriptionAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: { tenantId: string, planId: string, endDate: string, userId: string } }) => {
+    await checkSuperAdmin(data.userId);
+    await db.execute("UPDATE tenants SET subscription_plan_id = ?, subscription_end_date = ? WHERE id = ?", [data.planId, data.endDate, data.tenantId]);
+    return { success: true };
+  });
+
+// ============================================
+// PRODUCTS (tenant-scoped)
+// ============================================
+
+export const getProductsAction = createServerFn({ method: "GET" })
+  .handler(async ({ data }: { data?: { tenantId?: string } } = {}) => {
+    const tenantId = data?.tenantId || "default-tenant";
+    return safeAction(() =>
+      db.prepare("SELECT * FROM products WHERE deleted = 0 AND tenant_id = ? ORDER BY category ASC, sort_order ASC").all(tenantId)
+    );
+  });
+
+export const createProductAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: any }) => {
+    console.log("Creating product with data:", data);
+    const admin = await checkAdmin(data.adminId);
+    const id = data.id || crypto.randomUUID();
+    const stmt = db.prepare(`
+      INSERT INTO products (id, name, category, type, price, active, sort_order, pack_sessions, image_url, tenant_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    await stmt.run(id, data.name, data.category, data.type, data.price, data.active ? 1 : 0, data.sort_order, data.pack_sessions || null, data.image_url || null, admin.tenant_id);
+    return { success: true, id };
+  });
+
+export const updateProductAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: any }) => {
+    console.log("Updating product with data:", data);
+    const admin = await checkAdmin(data.adminId);
+    const { id, name, category, type, price, active, sort_order, pack_sessions, image_url } = data;
+    await db.prepare(`
+      UPDATE products 
+      SET name = ?, category = ?, type = ?, price = ?, active = ?, sort_order = ?, pack_sessions = ?, image_url = ?
+      WHERE id = ? AND tenant_id = ?
+    `).run(name, category, type, price, active ? 1 : 0, sort_order, pack_sessions || null, image_url || null, id, admin.tenant_id);
+    return { success: true };
+  });
+
+export const toggleProductActiveAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: { id: string, active: boolean, adminId: string } }) => {
+    const admin = await checkAdmin(data.adminId);
+    await db.prepare("UPDATE products SET active = ? WHERE id = ? AND tenant_id = ?").run(data.active ? 1 : 0, data.id, admin.tenant_id);
+    return { success: true };
+  });
+
+export const deleteProductAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: { id: string, adminId: string } }) => {
+    const admin = await checkAdmin(data.adminId);
+    await db.prepare("UPDATE products SET deleted = 1 WHERE id = ? AND tenant_id = ?").run(data.id, admin.tenant_id);
+    return { success: true };
+  });
+
+// ============================================
+// CATEGORIES (tenant-scoped)
+// ============================================
+export const getCategoriesAction = createServerFn({ method: "GET" })
+  .handler(async ({ data }: { data?: { tenantId?: string } } = {}) => {
+    const tenantId = data?.tenantId || "default-tenant";
+    const rows = await db.prepare("SELECT * FROM categories WHERE tenant_id = ? ORDER BY sort_order ASC").all(tenantId);
+    console.log("🔍 DEBUG: Catégories récupérées:", rows?.length || 0, "entrées pour tenant:", tenantId);
+    return rows;
+  });
+
+export const createCategoryAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: any }) => {
+    const admin = await checkAdmin(data.adminId);
+    const id = crypto.randomUUID();
+    const slug = data.name.toLowerCase().trim()
+      .replace(/[àáâãäå]/g, "a")
+      .replace(/[èéêë]/g, "e")
+      .replace(/[ìíîï]/g, "i")
+      .replace(/[òóôõö]/g, "o")
+      .replace(/[ùúûü]/g, "u")
+      .replace(/[ñ]/g, "n")
+      .replace(/ /g, '-')
+      .replace(/[^\w-]+/g, '');
+    await db.prepare("INSERT INTO categories (id, name, slug, sort_order, active, image_url, tenant_id) VALUES (?, ?, ?, ?, ?, ?, ?)")
+      .run(id, data.name, slug, Number(data.sort_order) || 0, data.active !== false ? 1 : 0, data.image_url || null, admin.tenant_id);
     return { success: true, id };
   });
 
 export const updateCategoryAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: any }) => {
-    await checkAdmin(data.adminId);
-    const { id, name, sort_order, active } = data;
+    const admin = await checkAdmin(data.adminId);
+    const { id, name, sort_order, active, image_url } = data;
     const slug = name.toLowerCase().trim()
       .replace(/[àáâãäå]/g, "a")
       .replace(/[èéêë]/g, "e")
@@ -157,111 +355,124 @@ export const updateCategoryAction = createServerFn({ method: "POST" })
       .replace(/[ñ]/g, "n")
       .replace(/ /g, '-')
       .replace(/[^\w-]+/g, '');
-    await db.prepare("UPDATE categories SET name = ?, slug = ?, sort_order = ?, active = ? WHERE id = ?")
-      .run(name, slug, Number(sort_order) || 0, active ? 1 : 0, id);
+    await db.prepare("UPDATE categories SET name = ?, slug = ?, sort_order = ?, active = ?, image_url = ? WHERE id = ? AND tenant_id = ?")
+      .run(name, slug, Number(sort_order) || 0, active ? 1 : 0, image_url || null, id, admin.tenant_id);
     return { success: true };
   });
 
 export const deleteCategoryAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: { id: string, adminId: string } }) => {
-    await checkAdmin(data.adminId);
-    const category = await db.prepare("SELECT slug FROM categories WHERE id = ?").get(data.id) as any;
+    const admin = await checkAdmin(data.adminId);
+    const category = await db.prepare("SELECT slug FROM categories WHERE id = ? AND tenant_id = ?").get(data.id, admin.tenant_id) as any;
     if (category) {
-       const product = await db.prepare("SELECT id FROM products WHERE category = ? LIMIT 1").get(category.slug) as any;
+       const product = await db.prepare("SELECT id FROM products WHERE category = ? AND tenant_id = ? LIMIT 1").get(category.slug, admin.tenant_id) as any;
        if (product) throw new Error("Impossible de supprimer une catégorie utilisée par des produits.");
     }
-    await db.prepare("DELETE FROM categories WHERE id = ?").run(data.id);
+    await db.prepare("DELETE FROM categories WHERE id = ? AND tenant_id = ?").run(data.id, admin.tenant_id);
     return { success: true };
   });
 
-// SETTINGS
+// ============================================
+// SETTINGS (tenant-scoped)
 // ============================================
 export const getSettingsAction = createServerFn({ method: "GET" })
-  .handler(async () => {
-    const rows = await db.prepare("SELECT * FROM settings").all() as any[];
+  .handler(async ({ data }: { data?: { tenantId?: string } } = {}) => {
+    const tenantId = data?.tenantId || "default-tenant";
+    const rows = await db.prepare("SELECT * FROM settings WHERE tenant_id = ?").all(tenantId) as any[];
     const result = Object.fromEntries(rows.map(r => [r.key, r.value]));
-    console.log("Server fetched settings:", result);
+    console.log("Server fetched settings for tenant:", tenantId);
     return result;
   });
 
 export const updateSettingsAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: { settings: Record<string, string>, adminId: string } }) => {
-    await checkAdmin(data.adminId);
-    console.log("Saving settings for admin:", data.adminId, data.settings);
+    const admin = await checkAdmin(data.adminId);
+    console.log("Saving settings for admin:", data.adminId, "tenant:", admin.tenant_id);
     for (const [key, value] of Object.entries(data.settings)) {
-      await db.prepare("REPLACE INTO settings (`key`, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)")
-        .run(key, value === null ? null : String(value));
+      // Check if setting exists for this tenant
+      const existing = await db.queryOne(
+        "SELECT `key` FROM settings WHERE `key` = ? AND tenant_id = ?",
+        [key, admin.tenant_id]
+      );
+      if (existing) {
+        await db.execute(
+          "UPDATE settings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE `key` = ? AND tenant_id = ?",
+          [value === null ? null : String(value), key, admin.tenant_id]
+        );
+      } else {
+        await db.execute(
+          "INSERT INTO settings (`key`, value, tenant_id) VALUES (?, ?, ?)",
+          [key, value === null ? null : String(value), admin.tenant_id]
+        );
+      }
     }
     return { success: true };
   });
 
-export const deleteProductAction = createServerFn({ method: "POST" })
-  .handler(async ({ data }: { data: { id: string, adminId: string } }) => {
-    await checkAdmin(data.adminId);
-    await db.prepare("UPDATE products SET deleted = 1 WHERE id = ?").run(data.id);
-    return { success: true };
-  });
-
 // ============================================
-// CLIENTS (now requires authentication)
+// CLIENTS (tenant-scoped)
 // ============================================
 export const getClientsAction = createServerFn({ method: "GET" })
-  .handler(async () => {
-    return await db.prepare("SELECT * FROM clients WHERE deleted = 0 ORDER BY last_name ASC").all();
+  .handler(async ({ data }: { data?: { tenantId?: string } } = {}) => {
+    const tenantId = data?.tenantId || "default-tenant";
+    return await db.prepare("SELECT * FROM clients WHERE deleted = 0 AND tenant_id = ? ORDER BY last_name ASC").all(tenantId);
   });
 
 export const createClientAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: any }) => {
-    await checkAuth(data.userId);
+    const user = await checkAuth(data.userId);
     const id = crypto.randomUUID();
     const stmt = db.prepare(`
-      INSERT INTO clients (id, first_name, last_name, phone, email, is_member, children_count, notes, active, type, company_name, company_ice, company_if, company_address)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO clients (id, first_name, last_name, phone, email, is_member, children_count, notes, active, type, company_name, company_ice, company_if, company_address, tenant_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     await stmt.run(
       id, data.first_name, data.last_name, data.phone, data.email, 
       data.is_member ? 1 : 0, data.children_count, data.notes, 
       data.active !== false ? 1 : 0, data.type || 'b2c',
-      data.company_name, data.company_ice, data.company_if, data.company_address
+      data.company_name, data.company_ice, data.company_if, data.company_address,
+      user.tenant_id
     );
     return { success: true, id };
   });
 
 export const updateClientAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: any }) => {
-    await checkAuth(data.userId);
+    const user = await checkAuth(data.userId);
     const { id, first_name, last_name, phone, email, is_member, children_count, notes, active, type, company_name, company_ice, company_if, company_address } = data;
     await db.prepare(`
       UPDATE clients 
       SET first_name = ?, last_name = ?, phone = ?, email = ?, is_member = ?, children_count = ?, notes = ?, active = ?, type = ?, company_name = ?, company_ice = ?, company_if = ?, company_address = ?
-      WHERE id = ?
-    `).run(first_name, last_name, phone, email, is_member ? 1 : 0, children_count, notes, active ? 1 : 0, type || 'b2c', company_name, company_ice, company_if, company_address, id);
+      WHERE id = ? AND tenant_id = ?
+    `).run(first_name, last_name, phone, email, is_member ? 1 : 0, children_count, notes, active ? 1 : 0, type || 'b2c', company_name, company_ice, company_if, company_address, id, user.tenant_id);
     return { success: true };
   });
 
 export const toggleClientActiveAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: { id: string, active: boolean, userId: string } }) => {
-    await checkAuth(data.userId);
-    await db.prepare("UPDATE clients SET active = ? WHERE id = ?").run(data.active ? 1 : 0, data.id);
+    const user = await checkAuth(data.userId);
+    await db.prepare("UPDATE clients SET active = ? WHERE id = ? AND tenant_id = ?").run(data.active ? 1 : 0, data.id, user.tenant_id);
     return { success: true };
   });
 
 export const deleteClientAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: { id: string, adminId: string } }) => {
-    await checkAdmin(data.adminId);
-    await db.prepare("UPDATE clients SET deleted = 1 WHERE id = ?").run(data.id);
+    const admin = await checkAdmin(data.adminId);
+    await db.prepare("UPDATE clients SET deleted = 1 WHERE id = ? AND tenant_id = ?").run(data.id, admin.tenant_id);
     return { success: true };
   });
 
 export const getClientPacksAction = createServerFn({ method: "GET" })
-  .handler(async ({ data }: { data: string }) => {
+  .handler(async ({ data }: { data: string | { clientId: string, tenantId?: string } }) => {
+    const clientId = typeof data === 'string' ? data : data.clientId;
+    const tenantId = typeof data === 'string' ? 'default-tenant' : (data.tenantId || 'default-tenant');
     const packs = await db.prepare(`
       SELECT cp.*, p.name as product_name
       FROM client_packs cp
       LEFT JOIN products p ON cp.product_id = p.id
-      WHERE cp.client_id = ?
+      WHERE cp.client_id = ? AND cp.tenant_id = ?
       ORDER BY cp.purchased_at DESC
-    `).all(data);
+    `).all(clientId, tenantId);
     
     for (const pack of packs) {
       pack.consumptions = await db.prepare("SELECT * FROM pack_consumptions WHERE pack_id = ? ORDER BY consumed_at ASC").all(pack.id);
@@ -271,14 +482,14 @@ export const getClientPacksAction = createServerFn({ method: "GET" })
 
 export const consumePackSessionAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: { packId: string, date: string, userId: string } }) => {
-    await checkAuth(data.userId);
+    const user = await checkAuth(data.userId);
     const transaction = db.transaction(async () => {
-      const pack = await db.prepare("SELECT sessions_remaining FROM client_packs WHERE id = ?").get(data.packId);
+      const pack = await db.prepare("SELECT sessions_remaining FROM client_packs WHERE id = ? AND tenant_id = ?").get(data.packId, user.tenant_id);
       if (!pack || pack.sessions_remaining <= 0) throw new Error("Pack épuisé");
       
-      await db.prepare("UPDATE client_packs SET sessions_remaining = sessions_remaining - 1 WHERE id = ?").run(data.packId);
-      await db.prepare("INSERT INTO pack_consumptions (id, pack_id, consumed_at) VALUES (?, ?, ?)")
-        .run(crypto.randomUUID(), data.packId, data.date);
+      await db.prepare("UPDATE client_packs SET sessions_remaining = sessions_remaining - 1 WHERE id = ? AND tenant_id = ?").run(data.packId, user.tenant_id);
+      await db.prepare("INSERT INTO pack_consumptions (id, pack_id, consumed_at, tenant_id) VALUES (?, ?, ?, ?)")
+        .run(crypto.randomUUID(), data.packId, data.date, user.tenant_id);
     });
     await transaction();
     return { success: true };
@@ -286,33 +497,36 @@ export const consumePackSessionAction = createServerFn({ method: "POST" })
 
 export const unconsumePackSessionAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: { consumptionId: string, packId: string, userId: string } }) => {
-    await checkAuth(data.userId);
+    const user = await checkAuth(data.userId);
     const transaction = db.transaction(async () => {
-      await db.prepare("DELETE FROM pack_consumptions WHERE id = ?").run(data.consumptionId);
-      await db.prepare("UPDATE client_packs SET sessions_remaining = sessions_remaining + 1 WHERE id = ?").run(data.packId);
+      await db.prepare("DELETE FROM pack_consumptions WHERE id = ? AND tenant_id = ?").run(data.consumptionId, user.tenant_id);
+      await db.prepare("UPDATE client_packs SET sessions_remaining = sessions_remaining + 1 WHERE id = ? AND tenant_id = ?").run(data.packId, user.tenant_id);
     });
     await transaction();
     return { success: true };
   });
 
 // ============================================
-// APPOINTMENTS (now requires authentication)
+// APPOINTMENTS (tenant-scoped)
 // ============================================
 export const getAppointmentsAction = createServerFn({ method: "GET" })
-  .handler(async ({ data }: { data: string }) => {
-    return await db.prepare("SELECT * FROM appointments WHERE date(starts_at) = ? ORDER BY starts_at")
-      .all(data);
+  .handler(async ({ data }: { data: string | { date: string, tenantId?: string } }) => {
+    const date = typeof data === 'string' ? data : data.date;
+    const tenantId = typeof data === 'string' ? 'default-tenant' : (data.tenantId || 'default-tenant');
+    return await db.prepare("SELECT * FROM appointments WHERE date(starts_at) = ? AND tenant_id = ? ORDER BY starts_at")
+      .all(date, tenantId);
   });
 
 export const getAppointmentsRangeAction = createServerFn({ method: "GET" })
-  .handler(async ({ data }: { data: { from: string; to: string } }) => {
-    return await db.prepare("SELECT * FROM appointments WHERE date(starts_at) >= ? AND date(starts_at) <= ? ORDER BY starts_at")
-      .all(data.from, data.to);
+  .handler(async ({ data }: { data: { from: string; to: string; tenantId?: string } }) => {
+    const tenantId = data.tenantId || "default-tenant";
+    return await db.prepare("SELECT * FROM appointments WHERE date(starts_at) >= ? AND date(starts_at) <= ? AND tenant_id = ? ORDER BY starts_at")
+      .all(data.from, data.to, tenantId);
   });
 
-// Helper to get Google Config for sync
-async function getGoogleConfig() {
-  const rows = await db.prepare("SELECT `key`, value FROM settings WHERE `key` LIKE 'google_%'").all() as any[];
+// Helper to get Google Config for sync (tenant-scoped)
+async function getGoogleConfig(tenantId: string) {
+  const rows = await db.prepare("SELECT `key`, value FROM settings WHERE `key` LIKE 'google_%' AND tenant_id = ?").all(tenantId) as any[];
   const s = Object.fromEntries(rows.map(r => [r.key, r.value]));
   return {
     clientEmail: s.google_client_email,
@@ -323,7 +537,7 @@ async function getGoogleConfig() {
 
 export const createAppointmentAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: any }) => {
-    await checkAuth(data.created_by);
+    const user = await checkAuth(data.created_by);
     const id = crypto.randomUUID();
     const startsAt = data.starts_at;
     const duration = Number(data.duration_min) || 30;
@@ -334,14 +548,13 @@ export const createAppointmentAction = createServerFn({ method: "POST" })
     const createdAt = data.created_at || new Date().toLocaleString('sv-SE').replace(' ', 'T');
     
     const stmt = db.prepare(`
-      INSERT INTO appointments (id, client_id, client_name, product_id, service_name, starts_at, duration_min, notes, created_by, google_event_id, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO appointments (id, client_id, client_name, product_id, service_name, starts_at, duration_min, notes, created_by, google_event_id, created_at, tenant_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     
 
-
     // Sync to Google Calendar
-    const googleConfig = await getGoogleConfig();
+    const googleConfig = await getGoogleConfig(user.tenant_id);
     const googleEventId = await syncEventToGoogle({
       id,
       client_name: data.client_name,
@@ -351,37 +564,37 @@ export const createAppointmentAction = createServerFn({ method: "POST" })
       notes: data.notes
     }, googleConfig);
 
-    await stmt.run(id, data.client_id, data.client_name, data.product_id, data.service_name, startsAt, data.duration_min, data.notes, data.created_by, googleEventId, createdAt);
+    await stmt.run(id, data.client_id, data.client_name, data.product_id, data.service_name, startsAt, data.duration_min, data.notes, data.created_by, googleEventId, createdAt, user.tenant_id);
     return { success: true, id, googleEventId };
   });
 
 export const updateAppointmentStatusAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: { id: string, status: string, userId: string } }) => {
-    await checkAuth(data.userId);
+    const user = await checkAuth(data.userId);
     
-    const appt = await db.prepare("SELECT * FROM appointments WHERE id = ?").get(data.id) as any;
+    const appt = await db.prepare("SELECT * FROM appointments WHERE id = ? AND tenant_id = ?").get(data.id, user.tenant_id) as any;
     if (!appt) throw new Error("Rendez-vous introuvable");
 
-    await db.prepare("UPDATE appointments SET status = ? WHERE id = ?").run(data.status, data.id);
+    await db.prepare("UPDATE appointments SET status = ? WHERE id = ? AND tenant_id = ?").run(data.status, data.id, user.tenant_id);
     
     // If cancelled or no-show, remove from Google Calendar
     if ((data.status === "cancelled" || data.status === "no_show") && appt.google_event_id) {
-      const googleConfig = await getGoogleConfig();
+      const googleConfig = await getGoogleConfig(user.tenant_id);
       await deleteEventFromGoogle(appt.google_event_id, googleConfig);
-      await db.prepare("UPDATE appointments SET google_event_id = NULL WHERE id = ?").run(data.id);
+      await db.prepare("UPDATE appointments SET google_event_id = NULL WHERE id = ? AND tenant_id = ?").run(data.id, user.tenant_id);
     } 
-    // If it was cancelled and now re-scheduled, we could re-sync, but for now we'll just handle deletion
     
     return { success: true };
   });
 
 export const syncFromGoogleAction = createServerFn({ method: "POST" })
-  .handler(async ({ data }: { data: { from: string; to: string } }) => {
-    const googleConfig = await getGoogleConfig();
+  .handler(async ({ data }: { data: { from: string; to: string; userId?: string } }) => {
+    const user = data.userId ? await checkAuth(data.userId) : { tenant_id: "default-tenant" };
+    const googleConfig = await getGoogleConfig(user.tenant_id);
     const events = await pullEventsFromGoogle(data.from, data.to, googleConfig);
     let imported = 0;
     for (const evt of events) {
-      const existing = await db.prepare("SELECT id FROM appointments WHERE google_event_id = ?").get(evt.google_event_id) as any;
+      const existing = await db.prepare("SELECT id FROM appointments WHERE google_event_id = ? AND tenant_id = ?").get(evt.google_event_id, user.tenant_id) as any;
       if (!existing) {
         const id = crypto.randomUUID();
         const startDate = new Date(evt.starts_at);
@@ -389,9 +602,9 @@ export const syncFromGoogleAction = createServerFn({ method: "POST" })
         const durationMin = Math.round((endDate.getTime() - startDate.getTime()) / 60000) || 60;
         const mysqlStartsAt = evt.starts_at.includes('T') ? evt.starts_at.substring(0, 19) : evt.starts_at + " 00:00:00";
         await db.prepare(`
-          INSERT INTO appointments (id, client_name, service_name, starts_at, duration_min, notes, google_event_id, status)
-          VALUES (?, ?, ?, ?, ?, ?, ?, 'scheduled')
-        `).run(id, evt.summary, evt.summary, mysqlStartsAt, durationMin, evt.description, evt.google_event_id);
+          INSERT INTO appointments (id, client_name, service_name, starts_at, duration_min, notes, google_event_id, status, tenant_id)
+          VALUES (?, ?, ?, ?, ?, ?, ?, 'scheduled', ?)
+        `).run(id, evt.summary, evt.summary, mysqlStartsAt, durationMin, evt.description, evt.google_event_id, user.tenant_id);
         imported++;
       }
     }
@@ -401,16 +614,19 @@ export const syncFromGoogleAction = createServerFn({ method: "POST" })
 export const updateAppointmentAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: any }) => {
     try {
-      const appt = await db.prepare("SELECT * FROM appointments WHERE id = ?").get(data.id) as any;
+      // Use userId if available, otherwise fall back to default tenant
+      const tenantId = data.userId ? (await checkAuth(data.userId)).tenant_id : "default-tenant";
+      
+      const appt = await db.prepare("SELECT * FROM appointments WHERE id = ? AND tenant_id = ?").get(data.id, tenantId) as any;
       if (!appt) throw new Error("Rendez-vous introuvable");
 
       await db.prepare(`
         UPDATE appointments SET client_name = ?, service_name = ?, starts_at = ?, duration_min = ?, notes = ?
-        WHERE id = ?
-      `).run(data.client_name, data.service_name, data.starts_at, data.duration_min, data.notes, data.id);
+        WHERE id = ? AND tenant_id = ?
+      `).run(data.client_name, data.service_name, data.starts_at, data.duration_min, data.notes, data.id, tenantId);
 
       // Sync update to Google Calendar
-      const googleConfig = await getGoogleConfig();
+      const googleConfig = await getGoogleConfig(tenantId);
       if (appt.google_event_id || googleConfig.calendarId) {
         const newGoogleId = await syncEventToGoogle({
           id: data.id,
@@ -423,7 +639,7 @@ export const updateAppointmentAction = createServerFn({ method: "POST" })
         }, googleConfig);
         
         if (newGoogleId && newGoogleId !== appt.google_event_id) {
-          await db.prepare("UPDATE appointments SET google_event_id = ? WHERE id = ?").run(newGoogleId, data.id);
+          await db.prepare("UPDATE appointments SET google_event_id = ? WHERE id = ? AND tenant_id = ?").run(newGoogleId, data.id, tenantId);
         }
       }
 
@@ -436,24 +652,24 @@ export const updateAppointmentAction = createServerFn({ method: "POST" })
 
 export const deleteAppointmentAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: { id: string, userId: string } }) => {
-    await checkAuth(data.userId);
-    const appt = await db.prepare("SELECT google_event_id FROM appointments WHERE id = ?").get(data.id) as any;
+    const user = await checkAuth(data.userId);
+    const appt = await db.prepare("SELECT google_event_id FROM appointments WHERE id = ? AND tenant_id = ?").get(data.id, user.tenant_id) as any;
     
     if (appt?.google_event_id) {
-      const googleConfig = await getGoogleConfig();
+      const googleConfig = await getGoogleConfig(user.tenant_id);
       await deleteEventFromGoogle(appt.google_event_id, googleConfig);
     }
     
-    await db.prepare("DELETE FROM appointments WHERE id = ?").run(data.id);
+    await db.prepare("DELETE FROM appointments WHERE id = ? AND tenant_id = ?").run(data.id, user.tenant_id);
     return { success: true };
   });
 
 // ============================================
-// SALES (now requires authentication)
+// SALES (tenant-scoped)
 // ============================================
 export const saveSaleAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: any }) => {
-    await checkAuth(data.sale.cashier_id);
+    const user = await checkAuth(data.sale.cashier_id);
     const { sale, items } = data;
     const saleId = sale.id || crypto.randomUUID();
     const createdAt = sale.created_at || new Date().toLocaleString('sv-SE').replace(' ', 'T');
@@ -462,25 +678,25 @@ export const saveSaleAction = createServerFn({ method: "POST" })
     try {
       const transaction = db.transaction(async () => {
       await db.prepare(`
-        INSERT INTO sales (id, cashier_id, client_id, subtotal, discount, discount_reason, total, payment_method, note, payment_image, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(saleId, sale.cashier_id, sale.client_id, sale.subtotal, sale.discount, sale.discount_reason, sale.total, sale.payment_method, sale.note, sale.payment_image, createdAt);
+        INSERT INTO sales (id, cashier_id, client_id, subtotal, discount, discount_reason, total, payment_method, note, payment_image, created_at, tenant_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(saleId, sale.cashier_id, sale.client_id, sale.subtotal, sale.discount, sale.discount_reason, sale.total, sale.payment_method, sale.note, sale.payment_image, createdAt, user.tenant_id);
 
       const itemStmt = db.prepare(`
-        INSERT INTO sale_items (id, sale_id, product_id, product_name, unit_price, quantity, line_total)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO sale_items (id, sale_id, product_id, product_name, unit_price, quantity, line_total, tenant_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `);
       for (const item of items) {
         const itemId = item.id || crypto.randomUUID();
-        await itemStmt.run(itemId, saleId, item.product_id, item.product_name, item.unit_price, item.quantity, item.line_total);
+        await itemStmt.run(itemId, saleId, item.product_id, item.product_name, item.unit_price, item.quantity, item.line_total, user.tenant_id);
 
         if (item.pack_sessions && item.pack_sessions > 0 && sale.client_id) {
           for (let i = 0; i < item.quantity; i++) {
             const packId = crypto.randomUUID();
             await db.prepare(`
-              INSERT INTO client_packs (id, client_id, product_id, sessions_total, sessions_remaining, purchased_at)
-              VALUES (?, ?, ?, ?, ?, ?)
-            `).run(packId, sale.client_id, item.product_id, item.pack_sessions, item.pack_sessions, createdAt);
+              INSERT INTO client_packs (id, client_id, product_id, sessions_total, sessions_remaining, purchased_at, tenant_id)
+              VALUES (?, ?, ?, ?, ?, ?, ?)
+            `).run(packId, sale.client_id, item.product_id, item.pack_sessions, item.pack_sessions, createdAt, user.tenant_id);
           }
         }
       }
@@ -495,33 +711,35 @@ export const saveSaleAction = createServerFn({ method: "POST" })
 
 export const updateSalePaymentAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: { id: string, payment_method: string, note?: string | null, payment_image?: string | null, userId: string } }) => {
-    await checkAuth(data.userId);
+    const user = await checkAuth(data.userId);
     await db.prepare(`
       UPDATE sales 
       SET payment_method = ?, note = ?, payment_image = ?
-      WHERE id = ?
-    `).run(data.payment_method, data.note, data.payment_image, data.id);
+      WHERE id = ? AND tenant_id = ?
+    `).run(data.payment_method, data.note, data.payment_image, data.id, user.tenant_id);
     return { success: true };
   });
 
 export const getSalesAction = createServerFn({ method: "GET" })
-  .handler(async ({ data }: { data: string | { start: string, end: string } }) => {
+  .handler(async ({ data }: { data: string | { start: string, end: string, tenantId?: string } }) => {
     if (typeof data === "string") {
+      // Legacy: single date string (uses default tenant)
       return await db.prepare(`
         SELECT s.*, c.first_name, c.last_name, c.type as client_type, c.company_name, c.company_ice 
         FROM sales s 
         LEFT JOIN clients c ON s.client_id = c.id 
-        WHERE date(s.created_at) = ? 
+        WHERE date(s.created_at) = ? AND s.tenant_id = ?
         ORDER BY s.created_at DESC
-      `).all(data);
+      `).all(data, "default-tenant");
     } else {
+      const tenantId = data.tenantId || "default-tenant";
       return await db.prepare(`
         SELECT s.*, c.first_name, c.last_name, c.type as client_type, c.company_name, c.company_ice 
         FROM sales s 
         LEFT JOIN clients c ON s.client_id = c.id 
-        WHERE date(s.created_at) BETWEEN ? AND ?
+        WHERE date(s.created_at) BETWEEN ? AND ? AND s.tenant_id = ?
         ORDER BY s.created_at DESC
-      `).all(data.start, data.end);
+      `).all(data.start, data.end, tenantId);
     }
   });
 
@@ -532,8 +750,8 @@ export const getSaleItemsAction = createServerFn({ method: "GET" })
 
 export const getClientSalesAction = createServerFn({ method: "GET" })
   .handler(async ({ data }: { data: { clientId: string, userId: string } }) => {
-    await checkAuth(data.userId);
-    const sales = await db.prepare("SELECT * FROM sales WHERE client_id = ? ORDER BY created_at DESC").all(data.clientId) as any[];
+    const user = await checkAuth(data.userId);
+    const sales = await db.prepare("SELECT * FROM sales WHERE client_id = ? AND tenant_id = ? ORDER BY created_at DESC").all(data.clientId, user.tenant_id) as any[];
     for (const sale of sales) {
       sale.items = await db.prepare("SELECT * FROM sale_items WHERE sale_id = ?").all(sale.id);
     }
@@ -563,18 +781,23 @@ export const getTablesAction = createServerFn({ method: "POST" })
 
 export const getTableDataAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: { tableName: string, adminId: string } }) => {
-    await checkAdmin(data.adminId);
+    const admin = await checkAdmin(data.adminId);
     // FIX: SQL injection protection - whitelist table names
     if (!ALLOWED_TABLES.includes(data.tableName)) {
       throw new Error(`Table "${data.tableName}" non autorisée`);
     }
-    return await db.prepare(`SELECT * FROM ${data.tableName} LIMIT 100`).all();
+    // Super admin sees all data, regular admin sees only their tenant
+    if (admin.role === 'super_admin') {
+      return await db.prepare(`SELECT * FROM ${data.tableName} LIMIT 100`).all();
+    } else {
+      return await db.prepare(`SELECT * FROM ${data.tableName} WHERE tenant_id = ? LIMIT 100`).all(admin.tenant_id);
+    }
   });
 
 
 
 // ============================================
-// AUTH (with bcrypt + rate limiting)
+// AUTH (with bcrypt + rate limiting + tenant)
 // ============================================
 export const loginAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: any }) => {
@@ -595,6 +818,19 @@ export const loginAction = createServerFn({ method: "POST" })
       recordFailedLogin(email);
       throw new Error("Email ou mot de passe incorrect");
     }
+
+    // Check if tenant is active
+    if (user.tenant_id) {
+      const tenant = await db.queryOne("SELECT id, name, slug, logo_url, primary_color, active FROM tenants WHERE id = ?", [user.tenant_id]);
+      if (tenant && !tenant.active) {
+        throw new Error("Ce compte est désactivé. Contactez le super-administrateur.");
+      }
+      // Attach tenant info to user
+      user.tenant_name = tenant?.name || "";
+      user.tenant_slug = tenant?.slug || "";
+      user.tenant_logo = tenant?.logo_url || "";
+      user.tenant_color = tenant?.primary_color || "#D4A574";
+    }
     
     // Success: reset attempts and return user (without password)
     resetLoginAttempts(email);
@@ -606,9 +842,18 @@ export const signUpAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: any }) => {
     const { email, password, fullName, inviteCode } = data;
     
-    // Require invite code to prevent unauthorized registrations
-    if (inviteCode !== "MUMS2026") {
-      throw new Error("Code d'invitation invalide. Contactez l'administrateur.");
+    // Find the tenant by invite code
+    let tenantId = "default-tenant";
+    if (inviteCode) {
+      const tenant = await db.queryOne("SELECT id FROM tenants WHERE invite_code = ? AND active = 1", [inviteCode]);
+      if (tenant) {
+        tenantId = tenant.id;
+      } else {
+        // Fallback: check hardcoded code
+        if (inviteCode !== "MUMS2026") {
+          throw new Error("Code d'invitation invalide. Contactez l'administrateur.");
+        }
+      }
     }
     
     // Check if email already exists
@@ -623,17 +868,29 @@ export const signUpAction = createServerFn({ method: "POST" })
     const id = crypto.randomUUID();
     const role = "cashier";
     await db.prepare(`
-      INSERT INTO users (id, email, password, full_name, role)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(id, email, hashedPassword, fullName, role);
-    return { id, email, fullName, role };
+      INSERT INTO users (id, email, password, full_name, role, tenant_id)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(id, email, hashedPassword, fullName, role, tenantId);
+    return { id, email, fullName, role, tenant_id: tenantId };
   });
 
 // Server-side session validation
 export const validateSessionAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: { userId: string } }) => {
-    const user = await db.prepare("SELECT id, email, full_name, role, avatar_url, created_at FROM users WHERE id = ?").get(data.userId) as any;
+    const user = await db.prepare("SELECT id, email, full_name, role, avatar_url, created_at, tenant_id FROM users WHERE id = ?").get(data.userId) as any;
     if (!user) return null;
+
+    // Attach tenant info
+    if (user.tenant_id) {
+      const tenant = await db.queryOne("SELECT id, name, slug, logo_url, primary_color, active FROM tenants WHERE id = ?", [user.tenant_id]);
+      if (tenant) {
+        user.tenant_name = tenant.name;
+        user.tenant_slug = tenant.slug;
+        user.tenant_logo = tenant.logo_url;
+        user.tenant_color = tenant.primary_color;
+      }
+    }
+
     return user;
   });
 
@@ -641,7 +898,9 @@ export const resetPasswordAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: any }) => {
     const { email, inviteCode, newPassword } = data;
     
-    if (inviteCode !== "MUMS2026") {
+    // Check invite code against tenant codes or hardcoded
+    const tenant = await db.queryOne("SELECT id FROM tenants WHERE invite_code = ?", [inviteCode]);
+    if (!tenant && inviteCode !== "MUMS2026") {
       throw new Error("Code d'invitation invalide.");
     }
     
@@ -671,7 +930,19 @@ export const updateUserProfileAction = createServerFn({ method: "POST" })
     await db.prepare("UPDATE users SET email = ?, full_name = ?, avatar_url = ? WHERE id = ?")
       .run(email, full_name, avatar_url, userId);
     
-    const updated = await db.prepare("SELECT id, email, full_name, role, avatar_url, created_at FROM users WHERE id = ?").get(userId) as any;
+    const updated = await db.prepare("SELECT id, email, full_name, role, avatar_url, created_at, tenant_id FROM users WHERE id = ?").get(userId) as any;
+    
+    // Attach tenant info
+    if (updated.tenant_id) {
+      const tenant = await db.queryOne("SELECT name, slug, logo_url, primary_color FROM tenants WHERE id = ?", [updated.tenant_id]);
+      if (tenant) {
+        updated.tenant_name = tenant.name;
+        updated.tenant_slug = tenant.slug;
+        updated.tenant_logo = tenant.logo_url;
+        updated.tenant_color = tenant.primary_color;
+      }
+    }
+    
     return updated;
   });
 
@@ -696,22 +967,39 @@ export const uploadAvatarAction = createServerFn({ method: "POST" })
     const publicUrl = `/uploads/avatars/${newFilename}`;
     await db.prepare("UPDATE users SET avatar_url = ? WHERE id = ?").run(publicUrl, userId);
     
-    const updated = await db.prepare("SELECT id, email, full_name, role, avatar_url, created_at FROM users WHERE id = ?").get(userId) as any;
+    const updated = await db.prepare("SELECT id, email, full_name, role, avatar_url, created_at, tenant_id FROM users WHERE id = ?").get(userId) as any;
+    
+    // Attach tenant info
+    if (updated.tenant_id) {
+      const tenant = await db.queryOne("SELECT name, slug, logo_url, primary_color FROM tenants WHERE id = ?", [updated.tenant_id]);
+      if (tenant) {
+        updated.tenant_name = tenant.name;
+        updated.tenant_slug = tenant.slug;
+        updated.tenant_logo = tenant.logo_url;
+        updated.tenant_color = tenant.primary_color;
+      }
+    }
+    
     return updated;
   });
 
 // ============================================
-// TICKETS
+// TICKETS (tenant-scoped)
 // ============================================
 
 export const getTicketsAction = createServerFn({ method: "GET" })
   .handler(async ({ data }: { data?: { userId: string } }) => {
     if (data?.userId) {
       const user = await checkAuth(data.userId);
-      if (user.role === 'admin') {
+      if (user.role === 'super_admin') {
+        // Super admin sees all tickets across tenants
         return await db.prepare("SELECT * FROM tickets ORDER BY created_at DESC").all();
+      } else if (user.role === 'admin') {
+        // Tenant admin sees all tickets for their tenant
+        return await db.prepare("SELECT * FROM tickets WHERE tenant_id = ? ORDER BY created_at DESC").all(user.tenant_id);
       } else {
-        return await db.prepare("SELECT * FROM tickets WHERE user_id = ? ORDER BY created_at DESC").all(data.userId);
+        // Regular user sees only their tickets
+        return await db.prepare("SELECT * FROM tickets WHERE user_id = ? AND tenant_id = ? ORDER BY created_at DESC").all(data.userId, user.tenant_id);
       }
     }
     return [];
@@ -723,9 +1011,9 @@ export const createTicketAction = createServerFn({ method: "POST" })
     const id = crypto.randomUUID();
     const createdAt = new Date().toLocaleString('sv-SE').replace(' ', 'T');
     await db.prepare(`
-      INSERT INTO tickets (id, user_id, user_name, type, title, description, image_url, status, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)
-    `).run(id, user.id, user.full_name || user.email, data.type, data.title, data.description, data.image_url || null, createdAt, createdAt);
+      INSERT INTO tickets (id, user_id, user_name, type, title, description, image_url, status, created_at, updated_at, tenant_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?)
+    `).run(id, user.id, user.full_name || user.email, data.type, data.title, data.description, data.image_url || null, createdAt, createdAt, user.tenant_id);
     return { success: true, id };
   });
 
@@ -759,4 +1047,116 @@ export const uploadTicketImageAction = createServerFn({ method: "POST" })
     
     const publicUrl = `/uploads/tickets/${newFilename}`;
     return { success: true, url: publicUrl };
+  });
+
+// ============================================
+// TENANT SEEDER
+// ============================================
+export const seedTenantDataAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: { tenantId: string, prefix: string, adminId: string } }) => {
+    await checkSuperAdmin(data.adminId);
+    
+    const { tenantId, prefix } = data;
+    const px = prefix ? `${prefix} ` : "";
+
+    // 1. Categories
+    const cat1Id = crypto.randomUUID();
+    const cat2Id = crypto.randomUUID();
+    const cat3Id = crypto.randomUUID();
+    await db.execute("INSERT INTO categories (id, name, slug, sort_order, active, image_url, tenant_id) VALUES (?, ?, ?, ?, 1, '/uploads/cat_consultation.png', ?)", 
+      [cat1Id, `${px}Consultations`, `${prefix.toLowerCase()}-consultations`, 0, tenantId]);
+    await db.execute("INSERT INTO categories (id, name, slug, sort_order, active, image_url, tenant_id) VALUES (?, ?, ?, ?, 1, '/uploads/cat_reeducation.png', ?)", 
+      [cat2Id, `${px}Rééducation`, `${prefix.toLowerCase()}-reeducation`, 1, tenantId]);
+    await db.execute("INSERT INTO categories (id, name, slug, sort_order, active, image_url, tenant_id) VALUES (?, ?, ?, ?, 1, '/uploads/cat_massage.png', ?)", 
+      [cat3Id, `${px}Massages Thérapeutiques`, `${prefix.toLowerCase()}-massages`, 2, tenantId]);
+
+    // 2. Products
+    const prod1Id = crypto.randomUUID();
+    const prod2Id = crypto.randomUUID();
+    const prod3Id = crypto.randomUUID();
+    const prod4Id = crypto.randomUUID();
+    const prod5Id = crypto.randomUUID();
+    
+    await db.execute("INSERT INTO products (id, name, category, type, price, duration_min, bookable, image_url, tenant_id) VALUES (?, ?, ?, 'service', 400, 60, 1, '/uploads/prod_bilan.png', ?)", 
+      [prod1Id, `${px}Bilan initial kinésithérapie`, `${prefix.toLowerCase()}-consultations`, tenantId]);
+    await db.execute("INSERT INTO products (id, name, category, type, price, duration_min, bookable, image_url, tenant_id) VALUES (?, ?, ?, 'service', 200, 30, 1, '/uploads/prod_rehab.png', ?)", 
+      [prod2Id, `${px}Séance de rééducation`, `${prefix.toLowerCase()}-reeducation`, tenantId]);
+    await db.execute("INSERT INTO products (id, name, category, type, price, duration_min, bookable, image_url, tenant_id) VALUES (?, ?, ?, 'service', 150, 15, 1, '/uploads/prod_shockwave.png', ?)", 
+      [prod3Id, `${px}Ondes de choc`, `${prefix.toLowerCase()}-reeducation`, tenantId]);
+    await db.execute("INSERT INTO products (id, name, category, type, price, duration_min, bookable, image_url, tenant_id) VALUES (?, ?, ?, 'service', 350, 45, 1, '/uploads/prod_backmassage.png', ?)", 
+      [prod4Id, `${px}Massage thérapeutique dos`, `${prefix.toLowerCase()}-massages`, tenantId]);
+    await db.execute("INSERT INTO products (id, name, category, type, price, duration_min, bookable, image_url, tenant_id) VALUES (?, ?, ?, 'service', 400, 60, 1, '/uploads/prod_drainage.png', ?)", 
+      [prod5Id, `${px}Drainage lymphatique`, `${prefix.toLowerCase()}-massages`, tenantId]);
+
+    // 3. Clients
+    const c1Id = crypto.randomUUID();
+    const c2Id = crypto.randomUUID();
+    const c3Id = crypto.randomUUID();
+    await db.execute("INSERT INTO clients (id, first_name, last_name, phone, email, tenant_id) VALUES (?, ?, ?, ?, ?, ?)", 
+      [c1Id, `${px}Client 1`, "", "0600000001", "c1@test.com", tenantId]);
+    await db.execute("INSERT INTO clients (id, first_name, last_name, phone, email, tenant_id) VALUES (?, ?, ?, ?, ?, ?)", 
+      [c2Id, `${px}Client 2 (C2)`, "", "0600000002", "c2@test.com", tenantId]);
+    await db.execute("INSERT INTO clients (id, first_name, last_name, phone, email, tenant_id) VALUES (?, ?, ?, ?, ?, ?)", 
+      [c3Id, `${px}Client 3 (C3)`, "", "0600000003", "c3@test.com", tenantId]);
+
+    // 4. Appointments (in 1 day, 2 days, 3 days)
+    const now = new Date();
+    const d1 = new Date(now); d1.setDate(d1.getDate() + 1); d1.setHours(10, 0, 0, 0);
+    const d2 = new Date(now); d2.setDate(d2.getDate() + 2); d2.setHours(14, 0, 0, 0);
+    
+    await db.execute("INSERT INTO appointments (id, client_id, client_name, product_id, service_name, starts_at, duration_min, tenant_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      [crypto.randomUUID(), c1Id, `${px}Client 1`, prod1Id, `${px}Bilan initial kinésithérapie`, d1.toLocaleString('sv-SE').replace(' ', 'T'), 60, tenantId]);
+    await db.execute("INSERT INTO appointments (id, client_id, client_name, product_id, service_name, starts_at, duration_min, tenant_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      [crypto.randomUUID(), c2Id, `${px}Client 2 (C2)`, prod2Id, `${px}Séance de rééducation`, d2.toLocaleString('sv-SE').replace(' ', 'T'), 30, tenantId]);
+
+    // 5. Sales
+    const s1Id = crypto.randomUUID();
+    const adminUser = await db.queryOne("SELECT id FROM users WHERE tenant_id = ? AND role = 'admin' LIMIT 1", [tenantId]);
+    const cashierId = adminUser ? adminUser.id : "system";
+    
+    await db.execute("INSERT INTO sales (id, cashier_id, client_id, subtotal, discount, total, payment_method, tenant_id) VALUES (?, ?, ?, ?, 0, ?, 'cash', ?)",
+      [s1Id, cashierId, c1Id, 400, 400, tenantId]);
+    await db.execute("INSERT INTO sale_items (id, sale_id, product_id, product_name, unit_price, quantity, line_total, tenant_id) VALUES (?, ?, ?, ?, ?, 1, ?, ?)",
+      [crypto.randomUUID(), s1Id, prod1Id, `${px}Bilan initial kinésithérapie`, 400, 400, tenantId]);
+
+    return { success: true };
+  });
+
+// ============================================
+// CRM / PROSPECTION ACTIONS
+// ============================================
+
+export const getProspectsAction = createServerFn({ method: "GET" })
+  .handler(async ({ data }: { data: { userId: string } }) => {
+    const user = await checkCrmAccess(data.userId);
+    
+    if (user.role === "super_admin") {
+      return await db.query("SELECT * FROM prospects ORDER BY created_at DESC");
+    } else {
+      return await db.query("SELECT * FROM prospects WHERE assigned_to = ? ORDER BY created_at DESC", [user.id]);
+    }
+  });
+
+export const updateProspectStatusAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: { userId: string, prospectId: string, status: string, notes?: string } }) => {
+    const user = await checkCrmAccess(data.userId);
+    if (data.notes !== undefined) {
+      await db.execute("UPDATE prospects SET status = ?, notes = ? WHERE id = ?", [data.status, data.notes, data.prospectId]);
+    } else {
+      await db.execute("UPDATE prospects SET status = ? WHERE id = ?", [data.status, data.prospectId]);
+    }
+    return { success: true };
+  });
+
+export const assignProspectAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: { userId: string, prospectId: string, assignedTo: string | null } }) => {
+    await checkSuperAdmin(data.userId);
+    await db.execute("UPDATE prospects SET assigned_to = ? WHERE id = ?", [data.assignedTo, data.prospectId]);
+    return { success: true };
+  });
+
+export const getSalesAgentsAction = createServerFn({ method: "GET" })
+  .handler(async ({ data }: { data: { userId: string } }) => {
+    await checkSuperAdmin(data.userId);
+    return await db.query("SELECT id, name FROM users WHERE role = 'sales'");
   });
