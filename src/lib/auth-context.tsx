@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { loginAction, signUpAction, validateSessionAction, resetPasswordAction, updateUserProfileAction, uploadAvatarAction } from "./actions";
 
-export type AppRole = "admin" | "cashier";
+export type AppRole = "admin" | "cashier" | "sales";
 
 interface AuthState {
   user: any | null;
@@ -11,6 +11,7 @@ interface AuthState {
   isAdmin: boolean;
   isSuperAdmin: boolean;
   isStaff: boolean;
+  isCrmAgent: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, fullName: string, inviteCode: string) => Promise<void>;
   resetPassword: (email: string, inviteCode: string, newPassword: string) => Promise<void>;
@@ -128,7 +129,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isAuthenticated: !!user,
     isAdmin: roles.includes("admin") || roles.includes("super_admin" as any),
     isSuperAdmin: roles.includes("super_admin" as any),
-    isStaff: roles.includes("admin") || roles.includes("cashier") || roles.includes("super_admin" as any) || roles.includes("sales" as any),
+    isStaff: roles.includes("admin") || roles.includes("cashier") || roles.includes("super_admin" as any) || roles.includes("sales"),
+    isCrmAgent: roles.includes("sales") || roles.includes("super_admin" as any),
     signIn,
     signUp,
     signOut,

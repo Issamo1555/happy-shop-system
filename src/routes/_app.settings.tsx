@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { getSettingsAction, updateSettingsAction } from "@/lib/actions";
+import { getSettingsAction, updateSettingsAction, getTenantUsersAction, createTenantUserAction, updateUserRoleAction, deleteTenantUserAction, resetTenantUserPasswordAction } from "@/lib/actions";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,18 +8,54 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Settings, MapPin, Phone, Mail, Calendar, Percent, Save, Lock } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Settings, MapPin, Phone, Mail, Calendar, Percent, Save, Lock, Users, UserPlus, Trash2, KeyRound, Shield, ShoppingBag, PhoneCall, Pencil } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_app/settings")({
   component: SettingsPage,
 });
 
+const ROLE_CONFIG: Record<string, { label: string; color: string; bg: string; icon: any }> = {
+  super_admin: { label: "Super Admin", color: "text-red-700", bg: "bg-red-50 border-red-200", icon: Shield },
+  admin: { label: "Administrateur", color: "text-purple-700", bg: "bg-purple-50 border-purple-200", icon: Shield },
+  cashier: { label: "Caissier", color: "text-emerald-700", bg: "bg-emerald-50 border-emerald-200", icon: ShoppingBag },
+  sales: { label: "Agent Call Center", color: "text-blue-700", bg: "bg-blue-50 border-blue-200", icon: PhoneCall },
+};
+
+function RoleBadge({ role }: { role: string }) {
+  const config = ROLE_CONFIG[role] || { label: role, color: "text-gray-700", bg: "bg-gray-50 border-gray-200", icon: Shield };
+  const Icon = config.icon;
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${config.bg} ${config.color}`}>
+      <Icon className="w-3 h-3" />
+      {config.label}
+    </span>
+  );
+}
+
 function SettingsPage() {
   const { user, isAdmin } = useAuth();
   const [settings, setSettings] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+
+  // Team state
+  const [teamMembers, setTeamMembers] = useState<any[]>([]);
+  const [teamLoading, setTeamLoading] = useState(false);
+  const [showCreateUser, setShowCreateUser] = useState(false);
+  const [newEmail, setNewEmail] = useState("");
+  const [newFullName, setNewFullName] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [newRole, setNewRole] = useState("cashier");
+  const [creatingUser, setCreatingUser] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<any>(null);
+  const [editRoleTarget, setEditRoleTarget] = useState<any>(null);
+  const [editRoleValue, setEditRoleValue] = useState("");
+  const [resetPwTarget, setResetPwTarget] = useState<any>(null);
+  const [resetPwValue, setResetPwValue] = useState("");
 
   const fetchSettings = async () => {
     setLoading(true);
@@ -30,6 +66,19 @@ function SettingsPage() {
       toast.error("Erreur lors du chargement des paramètres");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchTeam = async () => {
+    if (!user?.id) return;
+    setTeamLoading(true);
+    try {
+      const data = await getTenantUsersAction({ data: { userId: user.id } });
+      setTeamMembers(data as any[]);
+    } catch (err: any) {
+      toast.error(err.message || "Erreur lors du chargement de l'équipe");
+    } finally {
+      setTeamLoading(false);
     }
   };
 
@@ -59,6 +108,61 @@ function SettingsPage() {
     setSettings(prev => ({ ...prev, [key]: value }));
   };
 
+  const handleCreateUser = async () => {
+    if (!newEmail || !newFullName || !newPassword) {
+      toast.error("Veuillez remplir tous les champs.");
+      return;
+    }
+    setCreatingUser(true);
+    try {
+      await createTenantUserAction({ data: { email: newEmail, password: newPassword, fullName: newFullName, role: newRole, userId: user?.id || "" } });
+      toast.success(`Compte créé pour ${newFullName}`);
+      setShowCreateUser(false);
+      setNewEmail(""); setNewFullName(""); setNewPassword(""); setNewRole("cashier");
+      await fetchTeam();
+    } catch (err: any) {
+      toast.error(err.message || "Erreur lors de la création");
+    } finally {
+      setCreatingUser(false);
+    }
+  };
+
+  const handleDeleteUser = async () => {
+    if (!deleteTarget) return;
+    try {
+      await deleteTenantUserAction({ data: { targetUserId: deleteTarget.id, userId: user?.id || "" } });
+      toast.success(`Compte de ${deleteTarget.full_name} supprimé`);
+      setDeleteTarget(null);
+      await fetchTeam();
+    } catch (err: any) {
+      toast.error(err.message || "Erreur");
+    }
+  };
+
+  const handleUpdateRole = async () => {
+    if (!editRoleTarget || !editRoleValue) return;
+    try {
+      await updateUserRoleAction({ data: { targetUserId: editRoleTarget.id, newRole: editRoleValue, userId: user?.id || "" } });
+      toast.success(`Rôle de ${editRoleTarget.full_name} mis à jour`);
+      setEditRoleTarget(null);
+      await fetchTeam();
+    } catch (err: any) {
+      toast.error(err.message || "Erreur");
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (!resetPwTarget || !resetPwValue) return;
+    try {
+      await resetTenantUserPasswordAction({ data: { targetUserId: resetPwTarget.id, newPassword: resetPwValue, userId: user?.id || "" } });
+      toast.success(`Mot de passe de ${resetPwTarget.full_name} réinitialisé`);
+      setResetPwTarget(null);
+      setResetPwValue("");
+    } catch (err: any) {
+      toast.error(err.message || "Erreur");
+    }
+  };
+
   if (loading) return <div className="p-8 text-center">Chargement des paramètres...</div>;
 
   return (
@@ -71,15 +175,17 @@ function SettingsPage() {
         <p className="text-muted-foreground mt-2">Gérez les informations de votre centre, les intégrations et les règles métier.</p>
       </div>
 
-      <form onSubmit={handleSave}>
-        <Tabs defaultValue="general" className="space-y-6">
-          <TabsList className="grid grid-cols-3 w-full max-w-2xl">
-            <TabsTrigger value="general" className="gap-2"><MapPin className="w-4 h-4" /> Général</TabsTrigger>
-            <TabsTrigger value="calendar" className="gap-2"><Calendar className="w-4 h-4" /> Google Calendar</TabsTrigger>
-            <TabsTrigger value="business" className="gap-2"><Percent className="w-4 h-4" /> Règles Métier</TabsTrigger>
-          </TabsList>
+      <Tabs defaultValue="general" className="space-y-6" onValueChange={(v) => { if (v === "team") fetchTeam(); }}>
+        <TabsList className="grid grid-cols-4 w-full max-w-3xl">
+          <TabsTrigger value="general" className="gap-2"><MapPin className="w-4 h-4" /> Général</TabsTrigger>
+          <TabsTrigger value="calendar" className="gap-2"><Calendar className="w-4 h-4" /> Google Calendar</TabsTrigger>
+          <TabsTrigger value="business" className="gap-2"><Percent className="w-4 h-4" /> Règles Métier</TabsTrigger>
+          <TabsTrigger value="team" className="gap-2"><Users className="w-4 h-4" /> Équipe</TabsTrigger>
+        </TabsList>
 
-          <TabsContent value="general" className="space-y-6">
+        {/* ============ GENERAL TAB ============ */}
+        <TabsContent value="general" className="space-y-6">
+          <form onSubmit={handleSave}>
             <Card>
               <CardHeader>
                 <CardTitle>Informations du Centre</CardTitle>
@@ -123,9 +229,17 @@ function SettingsPage() {
                 </div>
               </CardContent>
             </Card>
-          </TabsContent>
+            <div className="flex justify-end pt-6">
+              <Button type="submit" size="lg" className="gap-2" disabled={submitting}>
+                {submitting ? "Enregistrement..." : <><Save className="w-4 h-4" /> Enregistrer les modifications</>}
+              </Button>
+            </div>
+          </form>
+        </TabsContent>
 
-          <TabsContent value="calendar" className="space-y-6">
+        {/* ============ CALENDAR TAB ============ */}
+        <TabsContent value="calendar" className="space-y-6">
+          <form onSubmit={handleSave}>
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-primary">
@@ -163,9 +277,17 @@ function SettingsPage() {
                 </div>
               </CardContent>
             </Card>
-          </TabsContent>
+            <div className="flex justify-end pt-6">
+              <Button type="submit" size="lg" className="gap-2" disabled={submitting}>
+                {submitting ? "Enregistrement..." : <><Save className="w-4 h-4" /> Enregistrer les modifications</>}
+              </Button>
+            </div>
+          </form>
+        </TabsContent>
 
-          <TabsContent value="business" className="space-y-6">
+        {/* ============ BUSINESS RULES TAB ============ */}
+        <TabsContent value="business" className="space-y-6">
+          <form onSubmit={handleSave}>
             <Card>
               <CardHeader>
                 <CardTitle>Règles de Remise</CardTitle>
@@ -205,22 +327,198 @@ function SettingsPage() {
                 </div>
               </CardContent>
             </Card>
-          </TabsContent>
-        </Tabs>
+            <div className="flex justify-end pt-6">
+              <Button type="submit" size="lg" className="gap-2" disabled={submitting}>
+                {submitting ? "Enregistrement..." : <><Save className="w-4 h-4" /> Enregistrer les modifications</>}
+              </Button>
+            </div>
+          </form>
+        </TabsContent>
 
-        <div className="flex justify-end pt-6 border-t mt-8">
-          <Button type="submit" size="lg" className="gap-2" disabled={submitting}>
-            {submitting ? (
-              "Enregistrement..."
-            ) : (
-              <>
-                <Save className="w-4 h-4" />
-                Enregistrer les modifications
-              </>
-            )}
-          </Button>
-        </div>
-      </form>
+        {/* ============ TEAM TAB ============ */}
+        <TabsContent value="team" className="space-y-6">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Users className="w-5 h-5 text-primary" />
+                  Gestion de l'équipe
+                </CardTitle>
+                <CardDescription>Créez des comptes pour vos employés et assignez-leur des rôles.</CardDescription>
+              </div>
+              <Button className="gap-2" onClick={() => setShowCreateUser(true)}>
+                <UserPlus className="w-4 h-4" />
+                Nouveau membre
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {teamLoading ? (
+                <p className="text-center text-muted-foreground py-8">Chargement de l'équipe...</p>
+              ) : teamMembers.length === 0 ? (
+                <p className="text-center text-muted-foreground py-8">Aucun membre trouvé.</p>
+              ) : (
+                <div className="rounded-lg border overflow-hidden">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="bg-muted/50 text-left text-xs uppercase tracking-wider text-muted-foreground">
+                        <th className="px-4 py-3 font-semibold">Nom</th>
+                        <th className="px-4 py-3 font-semibold">Email</th>
+                        <th className="px-4 py-3 font-semibold">Rôle</th>
+                        <th className="px-4 py-3 font-semibold text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {teamMembers.map((member: any) => (
+                        <tr key={member.id} className="hover:bg-muted/30 transition-colors">
+                          <td className="px-4 py-3 font-medium">{member.full_name || "—"}</td>
+                          <td className="px-4 py-3 text-sm text-muted-foreground">{member.email}</td>
+                          <td className="px-4 py-3"><RoleBadge role={member.role} /></td>
+                          <td className="px-4 py-3 text-right">
+                            {member.role !== "super_admin" && member.id !== user?.id && (
+                              <div className="flex items-center justify-end gap-1">
+                                <Button variant="ghost" size="icon" className="h-8 w-8" title="Modifier le rôle" onClick={() => { setEditRoleTarget(member); setEditRoleValue(member.role); }}>
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </Button>
+                                <Button variant="ghost" size="icon" className="h-8 w-8" title="Réinitialiser le mot de passe" onClick={() => { setResetPwTarget(member); setResetPwValue(""); }}>
+                                  <KeyRound className="w-3.5 h-3.5" />
+                                </Button>
+                                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" title="Supprimer" onClick={() => setDeleteTarget(member)}>
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </Button>
+                              </div>
+                            )}
+                            {member.id === user?.id && (
+                              <span className="text-xs text-muted-foreground italic">Vous</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+
+      {/* ============ CREATE USER MODAL ============ */}
+      <Dialog open={showCreateUser} onOpenChange={setShowCreateUser}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="font-display text-2xl text-primary flex items-center gap-2">
+              <UserPlus className="w-6 h-6" />
+              Ajouter un membre
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Nom complet</Label>
+              <Input value={newFullName} onChange={e => setNewFullName(e.target.value)} placeholder="Ex: Fatima Zahra" />
+            </div>
+            <div className="space-y-2">
+              <Label>Email</Label>
+              <Input type="email" value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="email@exemple.com" />
+            </div>
+            <div className="space-y-2">
+              <Label>Mot de passe temporaire</Label>
+              <Input type="text" value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder="Min. 6 caractères" />
+            </div>
+            <div className="space-y-2">
+              <Label>Rôle</Label>
+              <Select value={newRole} onValueChange={setNewRole}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cashier">
+                    <span className="flex items-center gap-2"><ShoppingBag className="w-4 h-4 text-emerald-600" /> Caissier (POS)</span>
+                  </SelectItem>
+                  <SelectItem value="sales">
+                    <span className="flex items-center gap-2"><PhoneCall className="w-4 h-4 text-blue-600" /> Agent Call Center (CRM)</span>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground mt-1">
+                {newRole === "cashier" 
+                  ? "Le caissier aura accès à la caisse, l'agenda et les clients." 
+                  : "L'agent aura accès uniquement au module de prospection (CRM)."
+                }
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCreateUser(false)}>Annuler</Button>
+            <Button onClick={handleCreateUser} disabled={creatingUser} className="gap-2">
+              {creatingUser ? "Création..." : <><UserPlus className="w-4 h-4" /> Créer le compte</>}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ============ EDIT ROLE MODAL ============ */}
+      <Dialog open={!!editRoleTarget} onOpenChange={() => setEditRoleTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="font-display text-xl text-primary">Modifier le rôle de {editRoleTarget?.full_name}</DialogTitle>
+          </DialogHeader>
+          <div className="py-4 space-y-4">
+            <Select value={editRoleValue} onValueChange={setEditRoleValue}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="admin">Administrateur</SelectItem>
+                <SelectItem value="cashier">Caissier (POS)</SelectItem>
+                <SelectItem value="sales">Agent Call Center (CRM)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditRoleTarget(null)}>Annuler</Button>
+            <Button onClick={handleUpdateRole}>Enregistrer</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ============ RESET PASSWORD MODAL ============ */}
+      <Dialog open={!!resetPwTarget} onOpenChange={() => setResetPwTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="font-display text-xl text-primary flex items-center gap-2">
+              <KeyRound className="w-5 h-5" />
+              Réinitialiser le mot de passe de {resetPwTarget?.full_name}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-4 space-y-2">
+            <Label>Nouveau mot de passe</Label>
+            <Input type="text" value={resetPwValue} onChange={e => setResetPwValue(e.target.value)} placeholder="Min. 6 caractères" />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setResetPwTarget(null)}>Annuler</Button>
+            <Button onClick={handleResetPassword} disabled={!resetPwValue || resetPwValue.length < 6}>Réinitialiser</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ============ DELETE CONFIRMATION ============ */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Supprimer {deleteTarget?.full_name} ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Cette action est irréversible. L'utilisateur <strong>{deleteTarget?.email}</strong> ne pourra plus se connecter.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteUser} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Supprimer définitivement
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
+

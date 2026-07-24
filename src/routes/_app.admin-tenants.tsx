@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { getTenantsAction, createTenantAction, updateTenantAction, toggleTenantActiveAction, seedTenantDataAction, getTenantUsersAction, deleteTenantUserAction, resetTenantUserPasswordAction } from "@/lib/actions";
+import { getTenantsAction, createTenantAction, updateTenantAction, toggleTenantActiveAction, seedTenantDataAction, getTenantUsersAction, deleteTenantUserAction, resetTenantUserPasswordAction, exportDatabaseAction, importDatabaseAction } from "@/lib/actions";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Building2, Plus, Search, Settings, Building, MapPin, DatabaseZap, Users, Trash2, Key, Check, X, Tag } from "lucide-react";
+import { Building2, Plus, Search, Settings, Building, MapPin, DatabaseZap, Users, Trash2, Key, Check, X, Tag, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -252,6 +252,10 @@ function AdminTenantsPage() {
           <TabsTrigger value="offres" className="gap-2">
             <Tag className="w-4 h-4" />
             Abonnements (SaaS)
+          </TabsTrigger>
+          <TabsTrigger value="database" className="gap-2">
+            <DatabaseZap className="w-4 h-4" />
+            Base de données
           </TabsTrigger>
         </TabsList>
 
@@ -563,7 +567,144 @@ function AdminTenantsPage() {
         <TabsContent value="offres" className="mt-0">
           <PricingOffersAdmin userId={user.id} />
         </TabsContent>
+
+        <TabsContent value="database" className="mt-0">
+          <DatabaseTab userId={user.id} />
+        </TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+function DatabaseTab({ userId }: { userId: string }) {
+  const [importing, setImporting] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const res = await exportDatabaseAction({ data: { userId } });
+      
+      const blob = new Blob([Uint8Array.from(atob(res.base64), c => c.charCodeAt(0))], { type: 'application/x-sqlite3' });
+      const link = document.createElement('a');
+      link.href = window.URL.createObjectURL(blob);
+      link.download = `pos_backup_${new Date().toISOString().split('T')[0]}.db`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      toast.success("Base de données exportée avec succès !");
+    } catch (err: any) {
+      toast.error("Erreur lors de l'exportation : " + err.message);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!confirm("Attention ! L'importation d'une base de données va écraser TOUTES les données actuelles de l'application. Cette action est irréversible. Voulez-vous continuer ?")) {
+      e.target.value = '';
+      return;
+    }
+
+    setImporting(true);
+    try {
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        const base64 = (event.target?.result as string).split(',')[1];
+        try {
+          await importDatabaseAction({ data: { userId, base64 } });
+          toast.success("Base de données restaurée avec succès ! L'application va se recharger.");
+          setTimeout(() => {
+            window.location.reload();
+          }, 1500);
+        } catch (err: any) {
+          toast.error(err.message || "Erreur lors de la restauration.");
+        } finally {
+          setImporting(false);
+          e.target.value = '';
+        }
+      };
+      reader.readAsDataURL(file);
+    } catch (err: any) {
+      toast.error("Erreur de lecture du fichier: " + err.message);
+      setImporting(false);
+      e.target.value = '';
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-xl flex items-center gap-2">
+          <DatabaseZap className="w-5 h-5 text-primary" />
+          Sauvegarde & Restauration de la Base de Données
+        </CardTitle>
+        <CardDescription>
+          Gérez la base de données SQLite globale de l'application. Exportez vos données pour les sauvegarder ou importez un fichier de sauvegarde antérieur.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="border rounded-xl p-5 space-y-4 bg-slate-50/50 hover:bg-slate-50 transition-colors">
+            <h3 className="font-bold text-slate-800 flex items-center gap-2">
+              📤 Exporter les données
+            </h3>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Télécharge le fichier de base de données complet (<code className="bg-slate-100 px-1 py-0.5 rounded text-blue-700 font-mono">pos.db</code>). 
+              Ce fichier contient tous les centres clients, abonnements, ventes, tickets et configurations de l'application.
+            </p>
+            <Button 
+              onClick={handleExport} 
+              disabled={exporting}
+              className="w-full sm:w-auto"
+            >
+              {exporting ? "Exportation..." : "Télécharger la Sauvegarde (.db)"}
+            </Button>
+          </div>
+
+          <div className="border rounded-xl p-5 space-y-4 bg-slate-50/50 hover:bg-slate-50 transition-colors">
+            <h3 className="font-bold text-red-800 flex items-center gap-2">
+              📥 Restaurer une sauvegarde
+            </h3>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Sélectionnez un fichier <code className="bg-slate-100 px-1 py-0.5 rounded text-red-700 font-mono">.db</code> précédemment exporté. 
+              <strong>Attention :</strong> Toutes les données actuelles seront entièrement remplacées par celles du fichier importé.
+            </p>
+            
+            <div className="relative">
+              <input
+                type="file"
+                accept=".db"
+                onChange={handleImport}
+                disabled={importing}
+                id="database-file-upload"
+                className="hidden"
+              />
+              <Label 
+                htmlFor="database-file-upload"
+                className={`inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 bg-destructive text-destructive-foreground shadow hover:bg-destructive/90 h-9 px-4 py-2 cursor-pointer w-full sm:w-auto ${importing ? 'opacity-50 pointer-events-none' : ''}`}
+              >
+                {importing ? "Restauration en cours..." : "Sélectionner et Importer un fichier (.db)"}
+              </Label>
+            </div>
+          </div>
+        </div>
+
+        <div className="border border-amber-100 bg-amber-50/50 rounded-xl p-4 flex gap-3 text-amber-900">
+          <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+          <div className="text-xs space-y-1">
+            <h4 className="font-bold text-amber-800">Recommandation de Sécurité</h4>
+            <p className="leading-relaxed">
+              Il est recommandé de faire un export régulier de votre base de données avant toute mise à jour système importante. 
+              Le système de restauration possède un mécanisme de sécurité automatique : si le fichier importé est invalide ou corrompu, le système annulera l'action et restaurera automatiquement votre base de données précédente pour éviter toute perte de données.
+            </p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

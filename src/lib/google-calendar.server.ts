@@ -43,7 +43,6 @@ if (isConfigured) {
   });
   calendar = google.calendar({ version: "v3", auth });
 }
-
 export const syncEventToGoogle = async (appt: {
   id: string;
   client_name: string;
@@ -53,17 +52,14 @@ export const syncEventToGoogle = async (appt: {
   notes?: string | null;
   google_event_id?: string | null;
 }, config?: { clientEmail?: string, privateKey?: string, calendarId?: string }) => {
-  
-  // Use config from DB if provided, else fallback to env
-  const email = config?.clientEmail || GOOGLE_CLIENT_EMAIL;
-  const key = (config?.privateKey || GOOGLE_PRIVATE_KEY || "").replace(/\\n/g, "\n");
-  const calendarId = config?.calendarId || GOOGLE_CALENDAR_ID;
+  const email = config?.clientEmail !== undefined ? config.clientEmail : GOOGLE_CLIENT_EMAIL;
+  const key = (config?.privateKey !== undefined ? config.privateKey : GOOGLE_PRIVATE_KEY || "").replace(/\\n/g, "\n");
+  const calendarId = config?.calendarId !== undefined ? config.calendarId : GOOGLE_CALENDAR_ID;
 
   if (!email || !key || !calendarId) {
     console.log("Google Calendar sync skipped: not configured");
     return appt.google_event_id || null;
   }
-
   try {
     const jwtAuth = new google.auth.JWT({
       email,
@@ -103,9 +99,9 @@ export const syncEventToGoogle = async (appt: {
 };
 
 export const deleteEventFromGoogle = async (googleEventId: string, config?: { clientEmail?: string, privateKey?: string, calendarId?: string }) => {
-  const email = config?.clientEmail || GOOGLE_CLIENT_EMAIL;
-  const key = (config?.privateKey || GOOGLE_PRIVATE_KEY || "").replace(/\\n/g, "\n");
-  const calendarId = config?.calendarId || GOOGLE_CALENDAR_ID;
+  const email = config?.clientEmail !== undefined ? config.clientEmail : GOOGLE_CLIENT_EMAIL;
+  const key = (config?.privateKey !== undefined ? config.privateKey : GOOGLE_PRIVATE_KEY || "").replace(/\\n/g, "\n");
+  const calendarId = config?.calendarId !== undefined ? config.calendarId : GOOGLE_CALENDAR_ID;
 
   if (!email || !key || !calendarId || !googleEventId) return;
   try {
@@ -126,9 +122,9 @@ export const deleteEventFromGoogle = async (googleEventId: string, config?: { cl
 
 // Pull events FROM Google Calendar into local format
 export const pullEventsFromGoogle = async (from: string, to: string, config?: { clientEmail?: string, privateKey?: string, calendarId?: string }) => {
-  const email = config?.clientEmail || GOOGLE_CLIENT_EMAIL;
-  const key = (config?.privateKey || GOOGLE_PRIVATE_KEY || "").replace(/\\n/g, "\n");
-  const calendarId = config?.calendarId || GOOGLE_CALENDAR_ID;
+  const email = config?.clientEmail !== undefined ? config.clientEmail : GOOGLE_CLIENT_EMAIL;
+  const key = (config?.privateKey !== undefined ? config.privateKey : GOOGLE_PRIVATE_KEY || "").replace(/\\n/g, "\n");
+  const calendarId = config?.calendarId !== undefined ? config.calendarId : GOOGLE_CALENDAR_ID;
 
   if (!email || !key || !calendarId) return [];
 

@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { getAppointmentsAction, getAppointmentsRangeAction, getProductsAction, getClientsAction, updateAppointmentStatusAction, createAppointmentAction, syncFromGoogleAction, updateAppointmentAction, deleteAppointmentAction } from "@/lib/actions";
+import { getAppointmentsAction, getAppointmentsRangeAction, getProductsAction, getClientsAction, updateAppointmentStatusAction, createAppointmentAction, syncFromGoogleAction, updateAppointmentAction, deleteAppointmentAction, getProspectsAction } from "@/lib/actions";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -53,6 +53,7 @@ function AgendaPage() {
   const [appts, setAppts] = useState<Appt[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
+  const [prospects, setProspects] = useState<any[]>([]);
   const [open, setOpen] = useState(false);
   const [editAppt, setEditAppt] = useState<Appt | null>(null);
   const [syncing, setSyncing] = useState(false);
@@ -93,8 +94,17 @@ function AgendaPage() {
       setProducts(pr as unknown as Product[]);
       const cl = await getClientsAction({ data: { tenantId: user?.tenant_id } });
       setClients(cl as unknown as Client[]);
+      
+      if (user?.tenant_id === 'system-tenant' && user?.id) {
+        try {
+          const prs = await getProspectsAction({ data: { userId: user.id } });
+          setProspects(prs || []);
+        } catch (e) {
+          console.error("Error loading prospects for agenda:", e);
+        }
+      }
     })();
-  }, [user?.tenant_id]);
+  }, [user?.tenant_id, user?.id]);
   useEffect(() => { load(); }, [day, view, user?.tenant_id]);
 
   const setStatus = async (id: string, s: Appt["status"]) => {
@@ -170,7 +180,7 @@ function AgendaPage() {
           <DialogTrigger asChild>
             <Button><Plus className="w-4 h-4 mr-2" />Nouveau RDV</Button>
           </DialogTrigger>
-          <ApptDialog products={products} clients={clients} defaultDay={day} userId={user?.id} onSaved={() => { setOpen(false); load(); }} />
+          <ApptDialog products={products} clients={clients} prospects={prospects} defaultDay={day} userId={user?.id} tenantId={user?.tenant_id} onSaved={() => { setOpen(false); load(); }} />
         </Dialog>
 
         {/* Edit Dialog */}
@@ -180,6 +190,7 @@ function AgendaPage() {
               appt={editAppt} 
               products={products} 
               userId={user?.id} 
+              tenantId={user?.tenant_id}
               onSaved={async () => { await load(); setEditAppt(null); }} 
               onDelete={async () => { await deleteAppt(editAppt.id); setEditAppt(null); }}
             />
@@ -399,8 +410,8 @@ function ApptRow({ appt, onStatus, onEdit, onDelete }: { appt: Appt; onStatus: (
 }
 
 /* ============================== NEW APPOINTMENT DIALOG ============================== */
-function ApptDialog({ products, clients, defaultDay, userId, onSaved }: {
-  products: Product[]; clients: Client[]; defaultDay: Date; userId?: string; onSaved: () => void;
+function ApptDialog({ products, clients, prospects, defaultDay, userId, tenantId, onSaved }: {
+  products: Product[]; clients: Client[]; prospects: any[]; defaultDay: Date; userId?: string; tenantId?: string; onSaved: () => void;
 }) {
   const [clientId, setClientId] = useState("");
   const [manualName, setManualName] = useState("");
@@ -411,10 +422,25 @@ function ApptDialog({ products, clients, defaultDay, userId, onSaved }: {
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showSuggestions, setShowSuggestions] = useState(false);
+
+  const isSystem = tenantId === 'system-tenant';
+
   useEffect(() => {
     const p = products.find((x) => x.id === productId);
     if (p?.duration_min) setDuration(p.duration_min);
   }, [productId, products]);
+
+  const filteredProspects = useMemo(() => {
+    if (!searchQuery) return prospects;
+    const q = searchQuery.toLowerCase();
+    return prospects.filter((p) => 
+      (p.name || "").toLowerCase().includes(q) ||
+      (p.city || "").toLowerCase().includes(q) ||
+      (p.phone || "").toLowerCase().includes(q)
+    );
+  }, [searchQuery, prospects]);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -422,9 +448,17 @@ function ApptDialog({ products, clients, defaultDay, userId, onSaved }: {
     
     const product = products.find((p) => p.id === productId);
     const client = clients.find((c) => c.id === clientId);
-    const clientName = client ? `${client.first_name} ${client.last_name ?? ""}`.trim() : manualName;
+    const prospect = prospects.find((p) => p.id === clientId);
+    
+    let clientName = manualName;
+    if (client) {
+      clientName = `${client.first_name} ${client.last_name ?? ""}`.trim();
+    } else if (prospect) {
+      clientName = prospect.name;
+    }
+
     if (!clientName || !product) {
-      toast.error("Client et prestation requis");
+      toast.error(isSystem ? "Centre et démonstration requis" : "Client et prestation requis");
       return;
     }
     const startsAt = `${date}T${time}:00`;
@@ -442,7 +476,7 @@ function ApptDialog({ products, clients, defaultDay, userId, onSaved }: {
           created_by: userId ?? null,
         }
       });
-      toast.success("Rendez-vous créé");
+      toast.success(isSystem ? "Rendez-vous de démo créé" : "Rendez-vous créé");
       onSaved();
     } catch (err: any) {
       console.error("Erreur création RDV:", err);
@@ -455,26 +489,79 @@ function ApptDialog({ products, clients, defaultDay, userId, onSaved }: {
   return (
     <DialogContent>
       <DialogHeader>
-        <DialogTitle className="font-display text-2xl text-primary">Nouveau rendez-vous</DialogTitle>
+        <DialogTitle className="font-display text-2xl text-primary">
+          {isSystem ? "Planifier une démo / RDV" : "Nouveau rendez-vous"}
+        </DialogTitle>
       </DialogHeader>
       <form onSubmit={submit} className="space-y-3">
         <div>
-          <Label>Client existant</Label>
-          <Select value={clientId} onValueChange={(v) => setClientId(v === "__none" ? "" : v)}>
-            <SelectTrigger><SelectValue placeholder="Sélectionner..." /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__none">Saisir manuellement</SelectItem>
-              {clients.map((c) => (
-                <SelectItem key={c.id} value={c.id}>{c.first_name} {c.last_name ?? ""}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <Label>{isSystem ? "Rechercher ou saisir le Centre médical" : "Client existant"}</Label>
+          {isSystem ? (
+            <div className="relative">
+              <Input
+                placeholder="Tapez le nom, la ville ou le téléphone du cabinet..."
+                value={searchQuery}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setSearchQuery(val);
+                  setManualName(val);
+                  if (!val) {
+                    setClientId("");
+                  }
+                }}
+                onFocus={() => setShowSuggestions(true)}
+                onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                required
+              />
+              {showSuggestions && (
+                <div className="absolute z-[100] w-full mt-1 bg-white text-popover-foreground rounded-md border shadow-lg max-h-[220px] overflow-y-auto divide-y divide-gray-100">
+                  {filteredProspects.length === 0 ? (
+                    <div className="px-3 py-2.5 text-sm text-muted-foreground italic">
+                      Aucun centre trouvé. Saisie manuelle activée.
+                    </div>
+                  ) : (
+                    filteredProspects.map((p) => (
+                      <div
+                        key={p.id}
+                        className="px-3 py-2 text-sm hover:bg-primary/10 cursor-pointer transition-colors text-left flex flex-col"
+                        onMouseDown={() => {
+                          setClientId(p.id);
+                          setManualName(p.name);
+                          setSearchQuery(p.name);
+                          setShowSuggestions(false);
+                        }}
+                      >
+                        <span className="font-semibold text-gray-800">{p.name}</span>
+                        <div className="flex gap-2 text-xs text-gray-500 mt-0.5">
+                          {p.city && <span>📍 {p.city}</span>}
+                          {p.phone && <span>📞 {p.phone}</span>}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          ) : (
+            <Select value={clientId} onValueChange={(v) => setClientId(v === "__none" ? "" : v)}>
+              <SelectTrigger><SelectValue placeholder="Sélectionner..." /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none">Saisir manuellement</SelectItem>
+                {clients.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>{c.first_name} {c.last_name ?? ""}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </div>
-        {!clientId && (
-          <div><Label>Nom du client</Label><Input value={manualName} onChange={(e) => setManualName(e.target.value)} required /></div>
+        {!isSystem && !clientId && (
+          <div>
+            <Label>Nom du client</Label>
+            <Input value={manualName} onChange={(e) => setManualName(e.target.value)} required />
+          </div>
         )}
         <div>
-          <Label>Prestation</Label>
+          <Label>{isSystem ? "Démonstration" : "Prestation"}</Label>
           <Select value={productId} onValueChange={setProductId}>
             <SelectTrigger><SelectValue placeholder="Choisir..." /></SelectTrigger>
             <SelectContent className="max-h-[300px]">
@@ -501,8 +588,8 @@ function ApptDialog({ products, clients, defaultDay, userId, onSaved }: {
 }
 
 /* ============================== EDIT APPOINTMENT DIALOG ============================== */
-function EditApptDialog({ appt, products, userId, onSaved, onDelete }: {
-  appt: Appt; products: Product[]; userId?: string; onSaved: () => void; onDelete: () => void;
+function EditApptDialog({ appt, products, userId, tenantId, onSaved, onDelete }: {
+  appt: Appt; products: Product[]; userId?: string; tenantId?: string; onSaved: () => void; onDelete: () => void;
 }) {
   const [clientName, setClientName] = useState(appt.client_name);
   const [serviceName, setServiceName] = useState(appt.service_name);
@@ -512,9 +599,11 @@ function EditApptDialog({ appt, products, userId, onSaved, onDelete }: {
   const [duration, setDuration] = useState(appt.duration_min);
   const [notes, setNotes] = useState(appt.notes || "");
 
+  const isSystem = tenantId === 'system-tenant';
+
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!clientName) { toast.error("Nom du client requis"); return; }
+    if (!clientName) { toast.error(isSystem ? "Nom du centre requis" : "Nom du client requis"); return; }
     const startsAt = `${date}T${time}:00`;
     try {
       await updateAppointmentAction({
@@ -537,12 +626,17 @@ function EditApptDialog({ appt, products, userId, onSaved, onDelete }: {
   return (
     <DialogContent>
       <DialogHeader>
-        <DialogTitle className="font-display text-2xl text-primary">Modifier le rendez-vous</DialogTitle>
+        <DialogTitle className="font-display text-2xl text-primary">
+          {isSystem ? "Modifier la démo / RDV" : "Modifier le rendez-vous"}
+        </DialogTitle>
       </DialogHeader>
       <form onSubmit={submit} className="space-y-3">
-        <div><Label>Client</Label><Input value={clientName} onChange={(e) => setClientName(e.target.value)} required /></div>
         <div>
-          <Label>Prestation</Label>
+          <Label>{isSystem ? "Nom du centre / Prospect" : "Nom du client"}</Label>
+          <Input value={clientName} onChange={(e) => setClientName(e.target.value)} required />
+        </div>
+        <div>
+          <Label>{isSystem ? "Démonstration" : "Prestation"}</Label>
           <Input value={serviceName} onChange={(e) => setServiceName(e.target.value)} required />
         </div>
         <div className="grid grid-cols-3 gap-2">

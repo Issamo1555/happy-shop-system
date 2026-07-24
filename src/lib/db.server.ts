@@ -9,26 +9,43 @@ const isMySQL = !!process.env.MYSQL_HOST;
 let sqliteDb: any = null;
 let mysqlPool: mysql.Pool | null = null;
 
-if (isMySQL) {
-  console.log("🚀 Using MySQL database (XAMPP/Remote)");
-  mysqlPool = mysql.createPool({
-    host: process.env.MYSQL_HOST,
-    port: Number(process.env.MYSQL_PORT) || 3306,
-    user: process.env.MYSQL_USER || "root",
-    password: process.env.MYSQL_PASSWORD || "",
-    database: process.env.MYSQL_DATABASE || "mums_home_pos",
-    socketPath: process.env.MYSQL_SOCKET || undefined,
-    waitForConnections: true,
-    connectionLimit: 10,
-    queueLimit: 0,
-    dateStrings: true
-  });
-} else {
-  console.log("📦 Using SQLite database (pos.db)");
-  const dbPath = join(process.cwd(), "pos.db");
-  sqliteDb = new Database(dbPath);
-  sqliteDb.pragma("journal_mode = WAL");
+export function initDatabase() {
+  if (isMySQL) {
+    if (!mysqlPool) {
+      console.log("🚀 Using MySQL database (XAMPP/Remote)");
+      mysqlPool = mysql.createPool({
+        host: process.env.MYSQL_HOST,
+        port: Number(process.env.MYSQL_PORT) || 3306,
+        user: process.env.MYSQL_USER || "root",
+        password: process.env.MYSQL_PASSWORD || "",
+        database: process.env.MYSQL_DATABASE || "mums_home_pos",
+        socketPath: process.env.MYSQL_SOCKET || undefined,
+        waitForConnections: true,
+        connectionLimit: 10,
+        queueLimit: 0,
+        dateStrings: true
+      });
+    }
+  } else {
+    if (!sqliteDb) {
+      console.log("📦 Using SQLite database (pos.db)");
+      const dbPath = join(process.cwd(), "pos.db");
+      sqliteDb = new Database(dbPath);
+      sqliteDb.pragma("journal_mode = WAL");
+    }
+  }
 }
+
+export function closeDatabase() {
+  if (sqliteDb) {
+    console.log("🔌 Closing SQLite database connection");
+    sqliteDb.close();
+    sqliteDb = null;
+  }
+}
+
+// Initial initialization
+initDatabase();
 
 // Unified Database Interface
 export const db = {
@@ -39,6 +56,7 @@ export const db = {
       const [rows] = await mysqlPool.execute(sql, params);
       return rows;
     } else {
+      initDatabase();
       return sqliteDb.prepare(sql).run(...params);
     }
   },
@@ -55,6 +73,7 @@ export const db = {
       }));
       return cleanRows as any[];
     } else {
+      initDatabase();
       return sqliteDb.prepare(sql).all(...params);
     }
   },
@@ -71,6 +90,7 @@ export const db = {
       }));
       return cleanRow;
     } else {
+      initDatabase();
       return sqliteDb.prepare(sql).get(...params);
     }
   },
@@ -105,6 +125,7 @@ export const db = {
       // For SQLite, better-sqlite3's transaction is synchronous.
       // To support async callbacks, we need to handle BEGIN/COMMIT manually.
       return async (...args: any[]) => {
+        initDatabase();
         sqliteDb.prepare("BEGIN").run();
         try {
           const result = await callback(...args);
@@ -123,6 +144,7 @@ export const db = {
       const [rows] = await mysqlPool.execute("SHOW TABLES") as any[];
       return rows.map((r: any) => Object.values(r)[0] as string);
     } else {
+      initDatabase();
       const rows = sqliteDb.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all() as any[];
       return rows.map((r: any) => r.name);
     }
@@ -184,7 +206,9 @@ export const initServerDb = async () => {
       specialty VARCHAR(100),
       status VARCHAR(50) DEFAULT 'nouveau',
       assigned_to VARCHAR(50),
+      assigned_at DATETIME NULL,
       notes TEXT,
+      callback_at VARCHAR(50),
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
     )`,
     `CREATE TABLE IF NOT EXISTS products (
@@ -344,7 +368,9 @@ export const initServerDb = async () => {
         specialty TEXT,
         status TEXT DEFAULT 'nouveau',
         assigned_to TEXT,
+        assigned_at TEXT,
         notes TEXT,
+        callback_at TEXT,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
       CREATE TABLE IF NOT EXISTS products (
@@ -572,14 +598,30 @@ export const initServerDb = async () => {
   // 4. INSERT SUPER ADMIN (new for multi-tenant)
   // ============================================
   const superAdminEmail = "superadmin@posrdv.com";
+  
+  // Ensure system tenant exists first
+  try {
+    await db.execute(
+      "INSERT INTO tenants (id, name, slug, invite_code, active) VALUES (?, ?, ?, ?, 1)",
+      ["system-tenant", "SaaS Platform", "system", "SYSTEM2026"]
+    );
+  } catch (e: any) {
+    // Already exists
+  }
+
   const superAdmin = await db.queryOne("SELECT id FROM users WHERE email = ?", [superAdminEmail]);
   if (!superAdmin) {
     const hashedPassword = bcrypt.hashSync("SuperAdmin2026!", 10);
     await db.execute(
       "INSERT INTO users (id, email, password, full_name, role, tenant_id) VALUES (?, ?, ?, ?, ?, ?)",
-      ["super-admin-id", superAdminEmail, hashedPassword, "Super Admin", "super_admin", "default-tenant"]
+      ["super-admin-id", superAdminEmail, hashedPassword, "Super Admin", "super_admin", "system-tenant"]
     );
     console.log("👑 Super admin created: superadmin@posrdv.com / SuperAdmin2026!");
+  } else {
+    // Migrate existing super admins to the system tenant
+    await db.execute(
+      "UPDATE users SET tenant_id = 'system-tenant' WHERE role = 'super_admin'"
+    );
   }
 
   // ============================================
@@ -643,6 +685,73 @@ export const initServerDb = async () => {
         [cat.id, cat.name, cat.slug, cat.sort_order, "default-tenant"]
       );
     }
+  }
+
+  // 6. Prospects migration — add assigned_at column if not exists
+  try {
+    if (isMySQL) {
+      const cols = await db.query("SHOW COLUMNS FROM prospects LIKE 'assigned_at'") as any[];
+      if (cols.length === 0) {
+        await db.execute("ALTER TABLE prospects ADD COLUMN assigned_at DATETIME NULL;");
+        console.log("Migration: Added assigned_at column to prospects table (MySQL)");
+      }
+    } else {
+      const cols = await db.query("PRAGMA table_info(prospects)") as any[];
+      if (!cols.some((c: any) => c.name === 'assigned_at')) {
+        await db.execute("ALTER TABLE prospects ADD COLUMN assigned_at TEXT;");
+        console.log("Migration: Added assigned_at column to prospects table (SQLite)");
+      }
+    }
+  } catch (err: any) {
+    console.error("Migration error (assigned_at):", err.message);
+  }
+
+  // ============================================
+  // 7. SEED SYSTEM TENANT SAAS PRODUCTS
+  // ============================================
+  try {
+    // Soft-delete legacy medical services for the system tenant to avoid FK constraint failures
+    await db.execute("UPDATE products SET deleted = 1 WHERE tenant_id = 'system-tenant'");
+    await db.execute("UPDATE categories SET active = 0 WHERE tenant_id = 'system-tenant'");
+
+    // Insert SaaS Categories
+    const catId = "cat-saas-demo";
+    if (isMySQL) {
+      await db.execute(
+        "INSERT IGNORE INTO categories (id, name, slug, sort_order, active, tenant_id) VALUES (?, ?, ?, ?, 1, ?)",
+        [catId, "Présentations & Démos", "demos", 1, "system-tenant"]
+      );
+    } else {
+      await db.execute(
+        "INSERT OR IGNORE INTO categories (id, name, slug, sort_order, active, tenant_id) VALUES (?, ?, ?, ?, 1, ?)",
+        [catId, "Présentations & Démos", "demos", 1, "system-tenant"]
+      );
+    }
+
+    // Insert SaaS Products
+    const saasProducts = [
+      { id: "prod-demo", name: "Démonstration POSetRDV", duration: 30 },
+      { id: "prod-devis", name: "Présentation Offre & Devis", duration: 20 },
+      { id: "prod-setup", name: "Installation & Paramétrage", duration: 60 },
+      { id: "prod-train", name: "Formation Secrétariat & Médecin", duration: 45 },
+    ];
+
+    for (const p of saasProducts) {
+      if (isMySQL) {
+        await db.execute(
+          "INSERT IGNORE INTO products (id, name, category, type, price, duration_min, bookable, active, deleted, sort_order, tenant_id) VALUES (?, ?, ?, 'service', 0, ?, 1, 1, 0, 0, ?)",
+          [p.id, p.name, "demos", p.duration, "system-tenant"]
+        );
+      } else {
+        await db.execute(
+          "INSERT OR IGNORE INTO products (id, name, category, type, price, duration_min, bookable, active, deleted, sort_order, tenant_id) VALUES (?, ?, ?, 'service', 0, ?, 1, 1, 0, 0, ?)",
+          [p.id, p.name, "demos", p.duration, "system-tenant"]
+        );
+      }
+    }
+    console.log("🌱 SaaS demo products seeded for system-tenant!");
+  } catch (err: any) {
+    console.error("Error seeding SaaS products:", err.message);
   }
 };
 

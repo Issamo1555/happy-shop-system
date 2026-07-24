@@ -1,8 +1,11 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth-context";
-import { ArrowRight, Activity, Calendar, CreditCard, Users, Shield, Zap, HeartPulse, CheckCircle2, Globe } from "lucide-react";
+import { ArrowRight, Activity, Calendar, CreditCard, Users, Shield, Zap, HeartPulse, CheckCircle2, Globe, PlayCircle, CalendarCheck } from "lucide-react";
 import { useState } from "react";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/")({
   component: LandingPage,
@@ -27,6 +30,30 @@ const translations = {
       offers: "Découvrir nos offres",
       note: "Aucune carte de crédit requise. Installation en 2 minutes.",
       demo: "Accéder à la démo"
+    },
+    lead: {
+      book_btn: "Demander une démo",
+      book_title: "Réserver une présentation gratuite",
+      book_desc: "Laissez-nous vos coordonnées. Un expert vous contactera pour une démo personnalisée de 10 min de notre outil.",
+      demo_btn: "Tester l'interface",
+      demo_title: "Accès immédiat à l'environnement de test",
+      demo_desc: "Entrez votre numéro WhatsApp pour accéder directement à la Sandbox (sans mot de passe).",
+      phone_placeholder: "Votre numéro WhatsApp (ex: 06...)",
+      name_placeholder: "Dr. Nom & Prénom",
+      submit_book: "Être rappelé",
+      submit_demo: "Accéder maintenant",
+      success_book: "C'est noté ! Un conseiller vous contactera très vite.",
+      success_demo: "Connexion à l'environnement de test...",
+    },
+    storyboard: {
+      badge: "La transformation SyncAPOS",
+      title: "De la paperasse à l'efficacité totale",
+      s1_title: "Fini le stress",
+      s1_desc: "Oubliez les dossiers perdus et les erreurs de caisse. Retrouvez la sérénité au cabinet.",
+      s2_title: "Tout sur tablette",
+      s2_desc: "Gérez vos patients, vos séances de kiné d'un simple clic depuis n'importe quel écran.",
+      s3_title: "Statistiques en direct",
+      s3_desc: "Visualisez votre croissance et votre chiffre d'affaires sur des graphiques clairs."
     },
     features: {
       badge: "Une solution tout-en-un",
@@ -78,6 +105,30 @@ const translations = {
       note: "بدون بطاقة ائتمان. التثبيت في دقيقتين فقط.",
       demo: "الولوج إلى العرض التجريبي"
     },
+    lead: {
+      book_btn: "طلب عرض توضيحي",
+      book_title: "حجز عرض تقديمي مجاني",
+      book_desc: "اترك لنا معلوماتك. سيتصل بك أحد خبرائنا لتقديم عرض مخصص لمدة 10 دقائق لبرنامجنا.",
+      demo_btn: "تجربة البرنامج",
+      demo_title: "ولوج فوري إلى بيئة التجربة",
+      demo_desc: "أدخل رقم الواتساب الخاص بك للولوج مباشرة (بدون كلمة مرور).",
+      phone_placeholder: "رقم الواتساب الخاص بك (مثال: 06...)",
+      name_placeholder: "د. الاسم والنسب",
+      submit_book: "اتصلوا بي",
+      submit_demo: "الولوج الآن",
+      success_book: "تم التسجيل! سيتصل بك مستشارنا في أقرب وقت.",
+      success_demo: "جاري الاتصال ببيئة التجربة...",
+    },
+    storyboard: {
+      badge: "تحول جذري مع SyncAPOS",
+      title: "من الفوضى الورقية إلى الكفاءة التامة",
+      s1_title: "نهاية التوتر",
+      s1_desc: "انسَ الملفات الضائعة وأخطاء الحسابات. استعد هدوءك في العيادة.",
+      s2_title: "كل شيء على الجهاز اللوحي",
+      s2_desc: "أدر مرضاك وحصص الترويض الطبي بنقرة واحدة فقط من أي شاشة.",
+      s3_title: "إحصائيات مباشرة",
+      s3_desc: "تتبع نمو عيادتك وأرباحك من خلال رسوم بيانية واضحة."
+    },
     features: {
       badge: "حل شامل ومتكامل",
       title: "كل ما يحتاجه مركزك. بدون أي تعقيدات.",
@@ -113,7 +164,12 @@ const translations = {
 
 function LandingPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [lang, setLang] = useState<"fr" | "ar">("fr");
+  const [phone, setPhone] = useState("");
+  const [name, setName] = useState("");
+  const [isDemoModalOpen, setIsDemoModalOpen] = useState(false);
+  const [isBookModalOpen, setIsBookModalOpen] = useState(false);
   const t = translations[lang];
 
   // Dir attributes based on language
@@ -121,7 +177,49 @@ function LandingPage() {
   const dir = isAr ? "rtl" : "ltr";
   const textLeft = isAr ? "text-right" : "text-left";
   const marginArrow = isAr ? "mr-2 rotate-180" : "ml-2";
+  const marginIcon = isAr ? "ml-2" : "mr-2";
   const flexItems = isAr ? "flex-row-reverse" : "flex-row";
+
+  const validatePhone = (p: string) => {
+    const cleanPhone = p.replace(/[\s-]/g, '');
+    // Accepte les numéros marocains (06...) et internationaux (+33..., 00212...) de 8 à 15 chiffres
+    const phoneRegex = /^(?:\+|00)?[1-9]\d{6,14}$|^0[1-9]\d{8}$/;
+    return phoneRegex.test(cleanPhone);
+  };
+
+  const handleBookSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!phone) {
+      toast.error(isAr ? "المرجو إدخال رقم الهاتف" : "Veuillez entrer un numéro de téléphone");
+      return;
+    }
+    if (!validatePhone(phone)) {
+      toast.error(isAr ? "رقم الهاتف غير صالح (يجب أن يحتوي على 8 أرقام على الأقل)" : "Numéro de téléphone invalide (au moins 8 chiffres attendus)");
+      return;
+    }
+    // Simulation d'envoi vers un CRM
+    toast.success(t.lead.success_book);
+    setIsBookModalOpen(false);
+    setPhone("");
+    setName("");
+  };
+
+  const handleDemoSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!phone) {
+      toast.error(isAr ? "المرجو إدخال رقم الهاتف" : "Veuillez entrer un numéro de téléphone");
+      return;
+    }
+    if (!validatePhone(phone)) {
+      toast.error(isAr ? "رقم الهاتف غير صالح (يجب أن يحتوي على 8 أرقام على الأقل)" : "Numéro de téléphone invalide (au moins 8 chiffres attendus)");
+      return;
+    }
+    // Simulation : Sauvegarde du lead et redirection vers dashboard sandbox
+    toast.success(t.lead.success_demo);
+    setTimeout(() => {
+      navigate({ to: "/login" }); // Ici, on pourrait logguer un user sandbox et aller sur /dashboard
+    }, 1500);
+  };
 
   return (
     <div dir={dir} className={`min-h-screen bg-slate-50 selection:bg-primary/20 selection:text-primary ${isAr ? 'font-arabic' : ''}`}>
@@ -162,11 +260,30 @@ function LandingPage() {
                 <Button variant="ghost" asChild className="hidden sm:flex text-slate-600">
                   <Link to="/login">{t.nav.login}</Link>
                 </Button>
-                <Button asChild className={`rounded-full px-6 shadow-sm ${flexItems}`}>
-                  <Link to="/login">
-                    {t.nav.start} <ArrowRight className={`w-4 h-4 ${marginArrow}`} />
-                  </Link>
-                </Button>
+                <Dialog open={isBookModalOpen} onOpenChange={setIsBookModalOpen}>
+                  <DialogTrigger asChild>
+                    <Button className={`rounded-full px-6 shadow-sm ${flexItems}`}>
+                      {t.nav.start} <ArrowRight className={`w-4 h-4 ${marginArrow}`} />
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className={isAr ? "text-right" : "text-left"}>
+                    <DialogHeader>
+                      <DialogTitle className="text-2xl">{t.lead.book_title}</DialogTitle>
+                      <DialogDescription className="text-base mt-2">
+                        {t.lead.book_desc}
+                      </DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={handleBookSubmit} className="space-y-4 mt-4">
+                      <div className="space-y-2">
+                        <Input placeholder={t.lead.name_placeholder} value={name} onChange={(e) => setName(e.target.value)} required className={isAr ? "text-right" : "text-left"} />
+                      </div>
+                      <div className="space-y-2">
+                        <Input type="tel" placeholder={t.lead.phone_placeholder} value={phone} onChange={(e) => setPhone(e.target.value)} required className={isAr ? "text-right" : "text-left"} />
+                      </div>
+                      <Button type="submit" className="w-full h-12 text-base">{t.lead.submit_book}</Button>
+                    </form>
+                  </DialogContent>
+                </Dialog>
               </>
             )}
           </div>
@@ -189,17 +306,42 @@ function LandingPage() {
             {t.hero.desc}
           </p>
           <div className={`mt-10 flex flex-col sm:flex-row gap-4 justify-center items-center ${flexItems}`}>
-            <Button size="lg" className="rounded-full px-8 h-14 text-base font-semibold shadow-lg shadow-primary/20" asChild>
-              <Link to="/login">{t.hero.try}</Link>
-            </Button>
-            <Button size="lg" variant="outline" className="rounded-full px-8 h-14 text-base font-semibold border-slate-300 hover:bg-slate-50" asChild>
-              <Link to="/pricing">{t.hero.offers}</Link>
-            </Button>
+            {/* BOOK A DEMO (Primary) */}
+            <Dialog open={isBookModalOpen} onOpenChange={setIsBookModalOpen}>
+              <DialogTrigger asChild>
+                <Button size="lg" className="rounded-full px-8 h-14 text-base font-semibold shadow-lg shadow-primary/20">
+                  <CalendarCheck className={`w-5 h-5 ${marginIcon}`} /> {t.lead.book_btn}
+                </Button>
+              </DialogTrigger>
+            </Dialog>
+
+            {/* INSTANT SANDBOX DEMO (Secondary) */}
+            <Dialog open={isDemoModalOpen} onOpenChange={setIsDemoModalOpen}>
+              <DialogTrigger asChild>
+                <Button size="lg" variant="outline" className="rounded-full px-8 h-14 text-base font-semibold border-slate-300 hover:bg-slate-50">
+                  <PlayCircle className={`w-5 h-5 ${marginIcon} text-primary`} /> {t.lead.demo_btn}
+                </Button>
+              </DialogTrigger>
+              <DialogContent className={isAr ? "text-right" : "text-left"}>
+                <DialogHeader>
+                  <DialogTitle className="text-2xl">{t.lead.demo_title}</DialogTitle>
+                  <DialogDescription className="text-base mt-2">
+                    {t.lead.demo_desc}
+                  </DialogDescription>
+                </DialogHeader>
+                <form onSubmit={handleDemoSubmit} className="space-y-4 mt-4">
+                  <div className="space-y-2">
+                    <Input type="tel" placeholder={t.lead.phone_placeholder} value={phone} onChange={(e) => setPhone(e.target.value)} required className={isAr ? "text-right" : "text-left"} />
+                  </div>
+                  <Button type="submit" variant="secondary" className="w-full h-12 text-base font-semibold bg-primary/10 text-primary hover:bg-primary/20">{t.lead.submit_demo}</Button>
+                </form>
+              </DialogContent>
+            </Dialog>
           </div>
           <p className="mt-4 text-sm text-slate-500">{t.hero.note}</p>
 
           {/* Abstract Dashboard Preview */}
-          <div className="mt-20 max-w-5xl mx-auto bg-white rounded-2xl border shadow-2xl p-2 md:p-4 aspect-video flex items-center justify-center relative group overflow-hidden">
+          <div className="mt-20 max-w-5xl mx-auto bg-white rounded-2xl border shadow-2xl p-2 md:p-4 aspect-video flex items-center justify-center relative group overflow-hidden cursor-pointer" onClick={() => setIsDemoModalOpen(true)}>
             <div className="absolute inset-0 bg-gradient-to-br from-slate-50 to-slate-100"></div>
             {/* Mockup Elements */}
             <div className={`absolute top-4 ${isAr ? 'right-4' : 'left-4'} ${isAr ? 'left-4' : 'right-4'} h-12 bg-white rounded-lg border shadow-sm flex items-center px-4 gap-4 ${flexItems}`}>
@@ -221,10 +363,29 @@ function LandingPage() {
               </div>
             </div>
             <div className="absolute inset-0 bg-black/5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm z-20">
-              <Button size="lg" className="rounded-full shadow-xl" asChild>
-                <Link to="/login">{t.hero.demo}</Link>
+              <Button size="lg" className="rounded-full shadow-xl pointer-events-none">
+                <PlayCircle className={`w-5 h-5 ${marginIcon}`} /> {t.hero.demo}
               </Button>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Storyboard Section (Inspired by visual flow) */}
+      <section className="py-24 bg-slate-100 border-t border-slate-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center max-w-3xl mx-auto mb-16">
+            <h2 className="text-primary font-semibold tracking-wide uppercase text-sm mb-3">{t.storyboard.badge}</h2>
+            <h3 className="text-3xl md:text-4xl font-display font-bold text-slate-900">{t.storyboard.title}</h3>
+          </div>
+
+          <div className="w-full max-w-6xl mx-auto rounded-3xl overflow-hidden shadow-2xl border border-slate-200 group bg-slate-200">
+            <img 
+              src="/uploads/fliki_banner.png" 
+              alt="Transformation SyncAPOS" 
+              className="w-full h-auto object-cover group-hover:scale-[1.02] transition-transform duration-700" 
+              onError={(e) => { e.currentTarget.src = "https://images.unsplash.com/photo-1576091160550-2173dba999ef?auto=format&fit=crop&q=80&w=2000" }}
+            />
           </div>
         </div>
       </section>

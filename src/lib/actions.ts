@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
-import { db } from "./db.server";
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
+import { db, closeDatabase, initDatabase } from "./db.server";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } from "fs";
 import { join } from "path";
 import bcrypt from "bcryptjs";
 import { syncEventToGoogle, deleteEventFromGoogle, pullEventsFromGoogle } from "./google-calendar.server";
@@ -184,32 +184,118 @@ export const toggleTenantActiveAction = createServerFn({ method: "POST" })
   });
 
 export const getTenantUsersAction = createServerFn({ method: "GET" })
-  .handler(async ({ data }: { data: { tenantId: string, userId: string } }) => {
-    await checkSuperAdmin(data.userId);
+  .handler(async ({ data }: { data: { tenantId?: string, userId: string } }) => {
+    const user = await checkAuth(data.userId);
+    // Super admin can view any tenant's users; admin can only view their own tenant
+    let tenantId = data.tenantId;
+    if (user.role === "super_admin") {
+      tenantId = tenantId || user.tenant_id;
+    } else if (user.role === "admin") {
+      tenantId = user.tenant_id;
+    } else {
+      throw new Error("Accès refusé : Droits administrateur requis");
+    }
     return safeAction(() =>
-      db.prepare("SELECT id, email, full_name, role, tenant_id, created_at FROM users WHERE tenant_id = ? ORDER BY created_at DESC").all(data.tenantId)
+      db.prepare("SELECT id, email, full_name, role, tenant_id, created_at FROM users WHERE tenant_id = ? ORDER BY created_at DESC").all(tenantId)
     );
+  });
+
+export const createTenantUserAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: { email: string, password: string, fullName: string, role: string, userId: string, tenantId?: string } }) => {
+    const admin = await checkAdmin(data.userId);
+    
+    // Determine target tenant
+    let targetTenantId = admin.tenant_id;
+    if (data.tenantId && admin.role === "super_admin") {
+      // Super admin can assign users to any tenant
+      targetTenantId = data.tenantId;
+    }
+    
+    // Validate role
+    const allowedRoles = ["cashier", "sales"];
+    if (!allowedRoles.includes(data.role)) {
+      throw new Error("Rôle invalide. Choisissez 'cashier' ou 'sales'.");
+    }
+    
+    // Validate password
+    if (!data.password || data.password.length < 6) {
+      throw new Error("Le mot de passe doit contenir au moins 6 caractères.");
+    }
+    
+    // Check email uniqueness
+    const existing = await db.prepare("SELECT id FROM users WHERE email = ?").get(data.email) as any;
+    if (existing) {
+      throw new Error("Cet email est déjà utilisé par un autre compte.");
+    }
+    
+    const id = crypto.randomUUID();
+    const hashedPassword = bcrypt.hashSync(data.password, 10);
+    await db.prepare(`
+      INSERT INTO users (id, email, password, full_name, role, tenant_id)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(id, data.email, hashedPassword, data.fullName, data.role, targetTenantId);
+    
+    return { success: true, id, email: data.email, fullName: data.fullName, role: data.role };
+  });
+
+export const updateUserRoleAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: { targetUserId: string, newRole: string, userId: string } }) => {
+    const admin = await checkAdmin(data.userId);
+    
+    // Validate role
+    const allowedRoles = ["cashier", "sales", "admin"];
+    if (!allowedRoles.includes(data.newRole)) {
+      throw new Error("Rôle invalide.");
+    }
+    
+    // Verify target user belongs to same tenant
+    const targetUser = await db.prepare("SELECT id, role, tenant_id FROM users WHERE id = ?").get(data.targetUserId) as any;
+    if (!targetUser) throw new Error("Utilisateur introuvable.");
+    if (targetUser.role === "super_admin") throw new Error("Impossible de modifier un super administrateur.");
+    if (admin.role !== "super_admin" && targetUser.tenant_id !== admin.tenant_id) {
+      throw new Error("Accès refusé : cet utilisateur n'appartient pas à votre établissement.");
+    }
+    
+    await db.prepare("UPDATE users SET role = ? WHERE id = ?").run(data.newRole, data.targetUserId);
+    return { success: true };
   });
 
 export const deleteTenantUserAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: { targetUserId: string, userId: string } }) => {
-    await checkSuperAdmin(data.userId);
-    // Prevent super admin from deleting themselves
+    const admin = await checkAdmin(data.userId);
+    
+    // Prevent deleting yourself
     if (data.targetUserId === data.userId) throw new Error("Impossible de supprimer votre propre compte.");
+    
+    // Verify target user belongs to same tenant (unless super admin)
+    const targetUser = await db.prepare("SELECT id, role, tenant_id FROM users WHERE id = ?").get(data.targetUserId) as any;
+    if (!targetUser) throw new Error("Utilisateur introuvable.");
+    if (targetUser.role === "super_admin") throw new Error("Impossible de supprimer un super administrateur.");
+    if (admin.role !== "super_admin" && targetUser.tenant_id !== admin.tenant_id) {
+      throw new Error("Accès refusé : cet utilisateur n'appartient pas à votre établissement.");
+    }
+    
     await db.prepare("DELETE FROM users WHERE id = ?").run(data.targetUserId);
     return { success: true };
   });
 
 export const resetTenantUserPasswordAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: { targetUserId: string, newPassword: string, userId: string } }) => {
-    await checkSuperAdmin(data.userId);
+    const admin = await checkAdmin(data.userId);
     if (!data.newPassword || data.newPassword.length < 6) {
       throw new Error("Le mot de passe doit contenir au moins 6 caractères.");
+    }
+    // Verify target user belongs to same tenant (unless super admin)
+    const targetUser = await db.prepare("SELECT id, tenant_id FROM users WHERE id = ?").get(data.targetUserId) as any;
+    if (!targetUser) throw new Error("Utilisateur introuvable.");
+    if (admin.role !== "super_admin" && targetUser.tenant_id !== admin.tenant_id) {
+      throw new Error("Accès refusé.");
     }
     const hashedPassword = bcrypt.hashSync(data.newPassword, 10);
     await db.prepare("UPDATE users SET password = ? WHERE id = ?").run(hashedPassword, data.targetUserId);
     return { success: true };
   });
+
 
 // ============================================
 // PRICING OFFERS (Public & Super Admin)
@@ -268,9 +354,51 @@ export const updateTenantSubscriptionAction = createServerFn({ method: "POST" })
 export const getProductsAction = createServerFn({ method: "GET" })
   .handler(async ({ data }: { data?: { tenantId?: string } } = {}) => {
     const tenantId = data?.tenantId || "default-tenant";
-    return safeAction(() =>
+
+    if (tenantId === 'system-tenant') {
+      try {
+        // Check if legacy medical products are active for the system tenant
+        const checkMedical = db.prepare("SELECT COUNT(*) as count FROM products WHERE tenant_id = 'system-tenant' AND deleted = 0 AND name LIKE '%[SA]%'").get() as any;
+        const medicalCount = checkMedical ? (Number(checkMedical.count) || 0) : 0;
+
+        const checkDemos = db.prepare("SELECT COUNT(*) as count FROM products WHERE tenant_id = 'system-tenant' AND deleted = 0 AND id = 'prod-demo'").get() as any;
+        const demoCount = checkDemos ? (Number(checkDemos.count) || 0) : 0;
+
+        if (medicalCount > 0 || demoCount === 0) {
+          console.log("🌱 Dynamic conversion: seeding SaaS products for system-tenant...");
+          
+          // Soft-delete legacy items
+          db.prepare("UPDATE products SET deleted = 1 WHERE tenant_id = 'system-tenant'").run();
+          db.prepare("UPDATE categories SET active = 0 WHERE tenant_id = 'system-tenant'").run();
+
+          // Insert SaaS categories & products
+          const catId = "cat-saas-demo";
+          db.prepare("INSERT OR REPLACE INTO categories (id, name, slug, sort_order, active, tenant_id) VALUES (?, ?, ?, ?, 1, ?)")
+            .run(catId, "Présentations & Démos", "demos", 1, "system-tenant");
+
+          const saasProducts = [
+            { id: "prod-demo", name: "Démonstration POSetRDV", duration: 30 },
+            { id: "prod-devis", name: "Présentation Offre & Devis", duration: 20 },
+            { id: "prod-setup", name: "Installation & Paramétrage", duration: 60 },
+            { id: "prod-train", name: "Formation Secrétariat & Médecin", duration: 45 },
+          ];
+
+          for (const p of saasProducts) {
+            db.prepare("INSERT OR REPLACE INTO products (id, name, category, type, price, duration_min, bookable, active, deleted, sort_order, tenant_id) VALUES (?, ?, ?, 'service', 0, ?, 1, 1, 0, 0, ?)")
+              .run(p.id, p.name, "demos", p.duration, "system-tenant");
+          }
+          console.log("🌱 Dynamic conversion complete!");
+        }
+      } catch (err: any) {
+        console.error("Error in dynamic SaaS products seeding:", err.message);
+      }
+    }
+
+    const res = await safeAction(() =>
       db.prepare("SELECT * FROM products WHERE deleted = 0 AND tenant_id = ? ORDER BY category ASC, sort_order ASC").all(tenantId)
     );
+    console.log("🔍 getProductsAction returned for tenant:", tenantId, "products count:", res?.length, "data:", JSON.stringify(res));
+    return res;
   });
 
 export const createProductAction = createServerFn({ method: "POST" })
@@ -380,6 +508,39 @@ export const getSettingsAction = createServerFn({ method: "GET" })
     const tenantId = data?.tenantId || "default-tenant";
     const rows = await db.prepare("SELECT * FROM settings WHERE tenant_id = ?").all(tenantId) as any[];
     const result = Object.fromEntries(rows.map(r => [r.key, r.value]));
+    
+    // Fallback for default-tenant settings in settings page
+    if (tenantId === 'default-tenant' || tenantId === 'system-tenant') {
+      const { readFileSync } = await import("fs");
+      const { join } = await import("path");
+      
+      let clientEmail = process.env.GOOGLE_CLIENT_EMAIL || "";
+      let privateKey = process.env.GOOGLE_PRIVATE_KEY || "";
+      let calendarId = process.env.GOOGLE_CALENDAR_ID || "";
+      
+      try {
+        const envPath = join(process.cwd(), ".env");
+        const content = readFileSync(envPath, "utf8");
+        content.split("\n").forEach(line => {
+          const parts = line.split("=");
+          if (parts.length >= 2) {
+            const key = parts[0].trim();
+            let value = parts.slice(1).join("=").trim();
+            if (value.startsWith('"') && value.endsWith('"')) {
+              value = value.substring(1, value.length - 1);
+            }
+            if (key === 'GOOGLE_CLIENT_EMAIL') clientEmail = value;
+            if (key === 'GOOGLE_PRIVATE_KEY') privateKey = value.replace(/\\n/g, "\n");
+            if (key === 'GOOGLE_CALENDAR_ID') calendarId = value;
+          }
+        });
+      } catch {}
+
+      if (!result.google_calendar_id) result.google_calendar_id = calendarId;
+      if (!result.google_client_email) result.google_client_email = clientEmail;
+      if (!result.google_private_key) result.google_private_key = privateKey;
+    }
+
     console.log("Server fetched settings for tenant:", tenantId);
     return result;
   });
@@ -421,6 +582,19 @@ export const getClientsAction = createServerFn({ method: "GET" })
 export const createClientAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: any }) => {
     const user = await checkAuth(data.userId);
+
+    if ((data.phone && data.phone.trim() !== '') || (data.email && data.email.trim() !== '')) {
+      const p = data.phone?.trim() || '___NO_PHONE___';
+      const e = data.email?.trim() || '___NO_EMAIL___';
+      const existing = await db.prepare(
+        "SELECT id, first_name, last_name FROM clients WHERE (phone = ? OR email = ?) AND tenant_id = ? AND deleted = 0 LIMIT 1"
+      ).get(p, e, user.tenant_id) as any;
+      
+      if (existing) {
+        throw new Error(`Un client existe déjà avec ce téléphone ou e-mail (${existing.first_name} ${existing.last_name}).`);
+      }
+    }
+
     const id = crypto.randomUUID();
     const stmt = db.prepare(`
       INSERT INTO clients (id, first_name, last_name, phone, email, is_member, children_count, notes, active, type, company_name, company_ice, company_if, company_address, tenant_id)
@@ -440,6 +614,19 @@ export const updateClientAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: any }) => {
     const user = await checkAuth(data.userId);
     const { id, first_name, last_name, phone, email, is_member, children_count, notes, active, type, company_name, company_ice, company_if, company_address } = data;
+
+    if ((phone && phone.trim() !== '') || (email && email.trim() !== '')) {
+      const p = phone?.trim() || '___NO_PHONE___';
+      const e = email?.trim() || '___NO_EMAIL___';
+      const existing = await db.prepare(
+        "SELECT id, first_name, last_name FROM clients WHERE (phone = ? OR email = ?) AND id != ? AND tenant_id = ? AND deleted = 0 LIMIT 1"
+      ).get(p, e, id, user.tenant_id) as any;
+      
+      if (existing) {
+        throw new Error(`Un client existe déjà avec ce téléphone ou e-mail (${existing.first_name} ${existing.last_name}).`);
+      }
+    }
+
     await db.prepare(`
       UPDATE clients 
       SET first_name = ?, last_name = ?, phone = ?, email = ?, is_member = ?, children_count = ?, notes = ?, active = ?, type = ?, company_name = ?, company_ice = ?, company_if = ?, company_address = ?
@@ -528,10 +715,13 @@ export const getAppointmentsRangeAction = createServerFn({ method: "GET" })
 async function getGoogleConfig(tenantId: string) {
   const rows = await db.prepare("SELECT `key`, value FROM settings WHERE `key` LIKE 'google_%' AND tenant_id = ?").all(tenantId) as any[];
   const s = Object.fromEntries(rows.map(r => [r.key, r.value]));
+  
+  const isDefault = tenantId === 'default-tenant' || tenantId === 'system-tenant';
+  
   return {
-    clientEmail: s.google_client_email,
-    privateKey: s.google_private_key,
-    calendarId: s.google_calendar_id
+    clientEmail: s.google_client_email || (isDefault ? undefined : ""),
+    privateKey: s.google_private_key || (isDefault ? undefined : ""),
+    calendarId: s.google_calendar_id || (isDefault ? undefined : "")
   };
 }
 
@@ -1148,15 +1338,337 @@ export const updateProspectStatusAction = createServerFn({ method: "POST" })
     return { success: true };
   });
 
+export const updateProspectAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: { userId: string, prospectId: string, email: string, notes: string, status: string, callbackAt: string | null, rdvAt: string | null } }) => {
+    const user = await checkCrmAccess(data.userId);
+    
+    await db.execute(
+      "UPDATE prospects SET email = ?, notes = ?, status = ?, callback_at = ? WHERE id = ?",
+      [data.email, data.notes, data.status, data.callbackAt || null, data.prospectId]
+    );
+
+    if (data.rdvAt) {
+      const prospect = await db.queryOne("SELECT name FROM prospects WHERE id = ?", [data.prospectId]);
+      if (prospect) {
+        const appointmentId = crypto.randomUUID();
+        const startsAt = data.rdvAt;
+        
+        await db.execute(`
+          INSERT INTO appointments (id, client_id, client_name, product_id, service_name, starts_at, duration_min, notes, created_by, created_at, tenant_id)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, [
+          appointmentId, 
+          null, 
+          prospect.name, 
+          null, 
+          "Démonstration CRM", 
+          startsAt, 
+          60, 
+          `RDV prospect programmé par l'agent. Notes : ${data.notes || ''}`, 
+          data.userId, 
+          new Date().toISOString().replace('.000Z', '').replace('Z', ''),
+          user.tenant_id
+        ]);
+      }
+    }
+    return { success: true };
+  });
+
 export const assignProspectAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: { userId: string, prospectId: string, assignedTo: string | null } }) => {
     await checkSuperAdmin(data.userId);
-    await db.execute("UPDATE prospects SET assigned_to = ? WHERE id = ?", [data.assignedTo, data.prospectId]);
+    const nowStr = data.assignedTo ? new Date().toISOString() : null;
+    await db.execute("UPDATE prospects SET assigned_to = ?, assigned_at = ? WHERE id = ?", [data.assignedTo, nowStr, data.prospectId]);
     return { success: true };
   });
 
 export const getSalesAgentsAction = createServerFn({ method: "GET" })
   .handler(async ({ data }: { data: { userId: string } }) => {
     await checkSuperAdmin(data.userId);
-    return await db.query("SELECT id, name FROM users WHERE role = 'sales'");
+    return await db.query("SELECT id, full_name AS name FROM users WHERE role = 'sales'");
+  });
+
+export const importProspectsAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: { userId: string, prospects: any[], duplicateStrategy: 'skip' | 'update' | 'allow', duplicateCriteria?: 'phone_or_email' | 'phone' | 'email' } }) => {
+    const user = await checkCrmAccess(data.userId);
+    const { prospects, duplicateStrategy, duplicateCriteria = 'phone_or_email' } = data;
+
+    let inserted = 0;
+    let updated = 0;
+    let skipped = 0;
+
+    await db.transaction(async () => {
+      // Fetch existing prospects to build duplicate checking sets
+      const existing = await db.query("SELECT phone, email FROM prospects") as any[];
+      const existingPhones = new Set(existing.map(p => p.phone?.replace(/\s+/g, '')).filter(Boolean));
+      const existingEmails = new Set(existing.map(p => p.email?.trim().toLowerCase()).filter(Boolean));
+
+      for (const p of prospects) {
+        const name = p.name?.trim();
+        if (!name) {
+          skipped++;
+          continue;
+        }
+
+        const phone = p.phone?.trim() || null;
+        const phoneKey = phone ? phone.replace(/\s+/g, '') : null;
+        const email = p.email?.trim().toLowerCase() || null;
+        const city = p.city?.trim() || null;
+        const specialty = p.specialty?.trim() || null;
+        const notes = p.notes?.trim() || null;
+
+        // Check duplicates based on criteria
+        const isPhoneDup = phoneKey && existingPhones.has(phoneKey);
+        const isEmailDup = email && existingEmails.has(email);
+        
+        let isDuplicate = false;
+        if (duplicateCriteria === 'phone') {
+          isDuplicate = !!isPhoneDup;
+        } else if (duplicateCriteria === 'email') {
+          isDuplicate = !!isEmailDup;
+        } else {
+          isDuplicate = !!isPhoneDup || !!isEmailDup;
+        }
+
+        if (isDuplicate && duplicateStrategy !== 'allow') {
+          if (duplicateStrategy === 'skip') {
+            skipped++;
+            continue;
+          } else if (duplicateStrategy === 'update') {
+            let rowUpdated = false;
+            // Update based on which duplicate field matched
+            if (duplicateCriteria !== 'email' && phoneKey && existingPhones.has(phoneKey)) {
+              await db.execute(
+                "UPDATE prospects SET name = ?, city = ?, specialty = ?, notes = ? WHERE REPLACE(phone, ' ', '') = ?",
+                [name, city, specialty, notes, phoneKey]
+              );
+              rowUpdated = true;
+            } else if (duplicateCriteria !== 'phone' && email && existingEmails.has(email)) {
+              await db.execute(
+                "UPDATE prospects SET name = ?, city = ?, specialty = ?, notes = ? WHERE LOWER(email) = ?",
+                [name, city, specialty, notes, email]
+              );
+              rowUpdated = true;
+            }
+            if (rowUpdated) {
+              updated++;
+            } else {
+              skipped++;
+            }
+            continue;
+          }
+        }
+
+        // Insert new record
+        const id = crypto.randomUUID();
+        const assignedTo = user.role === 'super_admin' ? null : user.id;
+        const assignedAt = assignedTo ? new Date().toISOString() : null;
+        await db.execute(
+          "INSERT INTO prospects (id, name, phone, email, city, specialty, status, assigned_to, assigned_at, notes) VALUES (?, ?, ?, ?, ?, ?, 'nouveau', ?, ?, ?)",
+          [id, name, phone, email, city, specialty, assignedTo, assignedAt, notes]
+        );
+        inserted++;
+
+        // Keep local sets updated for this batch
+        if (phoneKey) existingPhones.add(phoneKey);
+        if (email) existingEmails.add(email);
+      }
+    });
+
+    return { success: true, inserted, updated, skipped };
+  });
+
+export const distributeProspectsAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: { userId: string } }) => {
+    await checkSuperAdmin(data.userId);
+
+    const agents = await db.query("SELECT id FROM users WHERE role = 'sales'") as any[];
+    if (agents.length === 0) {
+      throw new Error("Aucun commercial actif trouvé pour la distribution.");
+    }
+
+    const unassigned = await db.query("SELECT id FROM prospects WHERE assigned_to IS NULL") as any[];
+    if (unassigned.length === 0) {
+      return { success: true, count: 0, message: "Aucun prospect non assigné à distribuer." };
+    }
+
+    let count = 0;
+    const nowStr = new Date().toISOString();
+    await db.transaction(async () => {
+      let agentIndex = 0;
+      for (const p of unassigned) {
+        const agentId = agents[agentIndex].id;
+        await db.execute("UPDATE prospects SET assigned_to = ?, assigned_at = ? WHERE id = ?", [agentId, nowStr, p.id]);
+        count++;
+        agentIndex = (agentIndex + 1) % agents.length;
+      }
+    });
+
+    return { success: true, count, message: `${count} prospects distribués avec succès entre ${agents.length} commerciaux.` };
+  });
+
+export const claimNextProspectAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: { userId: string } }) => {
+    const user = await checkCrmAccess(data.userId);
+
+    // Get oldest unassigned prospect
+    const nextProspect = await db.queryOne("SELECT id, name FROM prospects WHERE assigned_to IS NULL ORDER BY created_at ASC LIMIT 1") as any;
+    if (!nextProspect) {
+      return { success: false, message: "Aucune cible disponible dans le pool commun." };
+    }
+
+    // Claim it
+    const nowStr = new Date().toISOString();
+    await db.execute("UPDATE prospects SET assigned_to = ?, assigned_at = ? WHERE id = ?", [user.id, nowStr, nextProspect.id]);
+    return { success: true, prospectId: nextProspect.id, name: nextProspect.name };
+  });
+
+export const claimProspectAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: { userId: string, prospectId: string } }) => {
+    const user = await checkCrmAccess(data.userId);
+
+    // Verify it is not already claimed
+    const existing = await db.queryOne("SELECT assigned_to, name FROM prospects WHERE id = ?", [data.prospectId]) as any;
+    if (!existing) throw new Error("Prospect introuvable");
+    if (existing.assigned_to && existing.assigned_to !== user.id) {
+      throw new Error("Ce prospect a déjà été assigné à un autre commercial.");
+    }
+
+    const nowStr = new Date().toISOString();
+    await db.execute("UPDATE prospects SET assigned_to = ?, assigned_at = ? WHERE id = ?", [user.id, nowStr, data.prospectId]);
+    return { success: true, name: existing.name };
+  });
+
+export const recycleProspectsAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: { userId: string, inactivityDays: number, refusalRecycleDays: number } }) => {
+    await checkSuperAdmin(data.userId);
+    const { inactivityDays = 7, refusalRecycleDays = 15 } = data;
+
+    let recycledCount = 0;
+    const now = new Date();
+    const inactivityLimit = new Date(now.getTime() - inactivityDays * 24 * 60 * 60 * 1000).toISOString();
+    const refusalLimit = new Date(now.getTime() - refusalRecycleDays * 24 * 60 * 60 * 1000).toISOString();
+
+    await db.transaction(async () => {
+      // Fetch currently assigned prospects
+      const assignedProspects = await db.query("SELECT id, name, status, assigned_at, callback_at, notes FROM prospects WHERE assigned_to IS NOT NULL") as any[];
+
+      // Fetch upcoming appointments client names to prevent recycling active bookings
+      const upcomingAppts = await db.query("SELECT client_name FROM appointments WHERE starts_at >= datetime('now')") as any[];
+      const upcomingApptNames = new Set(upcomingAppts.map(a => a.client_name.trim().toLowerCase()));
+
+      for (const p of assignedProspects) {
+        // Skip if future callback exists
+        if (p.callback_at) {
+          const cbDate = new Date(p.callback_at);
+          if (cbDate.getTime() > now.getTime()) {
+            continue;
+          }
+        }
+
+        // Skip if there's an upcoming appointment for this prospect name
+        if (p.name && upcomingApptNames.has(p.name.trim().toLowerCase())) {
+          continue;
+        }
+
+        // Calculate eligibility
+        const assignedTime = p.assigned_at ? new Date(p.assigned_at).getTime() : 0;
+        
+        let limitTime = new Date(inactivityLimit).getTime();
+        if (p.status === 'sans_reponse' || p.status === 'contacte' || p.status === 'pas_interesse' || p.status === 'refus') {
+          limitTime = new Date(refusalLimit).getTime();
+        } else if (p.status === 'client' || p.status === 'refus_definitif') {
+          continue; // Locked forever, never recyclable!
+        }
+
+        if (assignedTime < limitTime) {
+          const newNotes = (p.notes || '') + `\n[Recyclage - ${now.toLocaleDateString('fr-FR')}] Remis dans le pool commun (inactivité de ${p.status === 'refus' || p.status === 'pas_interesse' || p.status === 'sans_reponse' || p.status === 'contacte' ? refusalRecycleDays : inactivityDays} jours).`;
+          await db.execute(
+            "UPDATE prospects SET assigned_to = NULL, assigned_at = NULL, status = 'recyclé', notes = ? WHERE id = ?",
+            [newNotes, p.id]
+          );
+          recycledCount++;
+        }
+      }
+    });
+
+    return { success: true, count: recycledCount };
+  });
+
+export const exportDatabaseAction = createServerFn({ method: "GET" })
+  .handler(async ({ data }: { data: { userId: string } }) => {
+    await checkSuperAdmin(data.userId);
+    
+    if (process.env.MYSQL_HOST) {
+      throw new Error("L'export de base de données n'est pas supporté en mode MySQL.");
+    }
+
+    const dbPath = join(process.cwd(), "pos.db");
+    if (!existsSync(dbPath)) {
+      throw new Error("Base de données introuvable sur le disque.");
+    }
+
+    const content = readFileSync(dbPath);
+    return {
+      filename: "pos.db",
+      base64: content.toString("base64")
+    };
+  });
+
+export const importDatabaseAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: { userId: string, base64: string } }) => {
+    await checkSuperAdmin(data.userId);
+
+    if (process.env.MYSQL_HOST) {
+      throw new Error("L'import de base de données n'est pas supporté en mode MySQL.");
+    }
+
+    const dbPath = join(process.cwd(), "pos.db");
+    const bakPath = join(process.cwd(), "pos.db.bak");
+
+    // Close SQLite connection before overwriting
+    closeDatabase();
+
+    // Make copy backup
+    if (existsSync(dbPath)) {
+      try {
+        writeFileSync(bakPath, readFileSync(dbPath));
+      } catch (err) {
+        console.error("Could not write backup", err);
+      }
+    }
+
+    try {
+      const buffer = Buffer.from(data.base64, "base64");
+      writeFileSync(dbPath, buffer);
+
+      // Re-init connection
+      initDatabase();
+
+      // Test connection
+      const test = await db.query("SELECT name FROM sqlite_master WHERE type='table'");
+      if (!test || test.length === 0) {
+        throw new Error("Le fichier importé n'est pas une base de données SQLite valide.");
+      }
+
+      // Delete backup
+      if (existsSync(bakPath)) {
+        unlinkSync(bakPath);
+      }
+
+      return { success: true };
+    } catch (err: any) {
+      console.error("Error during import, rolling back", err);
+      closeDatabase();
+      if (existsSync(bakPath)) {
+        try {
+          writeFileSync(dbPath, readFileSync(bakPath));
+          unlinkSync(bakPath);
+        } catch (e) {
+          console.error("Critical: Could not restore backup!", e);
+        }
+      }
+      initDatabase();
+      throw new Error("Échec de l'importation : " + err.message);
+    }
   });

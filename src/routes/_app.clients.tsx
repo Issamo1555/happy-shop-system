@@ -434,8 +434,8 @@ function ClientDialog({ client, userId, onSaved }: { client: Client | null; user
       }
       toast.success("Client enregistré");
       onSaved();
-    } catch (err) {
-      toast.error("Erreur lors de l'enregistrement");
+    } catch (err: any) {
+      toast.error(err.message || "Erreur lors de l'enregistrement");
     }
   };
 
