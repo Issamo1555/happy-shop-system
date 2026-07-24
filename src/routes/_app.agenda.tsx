@@ -65,7 +65,7 @@ function AgendaPage() {
       const end = view === "month" ? endOfMonth(day) : endOfWeek(day, { weekStartsOn: 1 });
       const from = format(view === "day" ? addDays(day, -7) : start, "yyyy-MM-dd");
       const to = format(view === "day" ? addDays(day, 7) : end, "yyyy-MM-dd");
-      const result = await syncFromGoogleAction({ data: { from, to } }) as any;
+      const result = await syncFromGoogleAction({ data: { from, to, userId: user?.id } }) as any;
       toast.success(`Synchronisé : ${result.imported} nouveau(x) RDV importé(s) sur ${result.total} événements Google`);
       load();
     } catch (err: any) {
@@ -466,7 +466,7 @@ function ApptDialog({ products, clients, prospects, defaultDay, userId, tenantId
     try {
       await createAppointmentAction({
         data: {
-          client_id: clientId || null,
+          client_id: client ? clientId : null,
           client_name: clientName,
           product_id: product.id,
           service_name: product.name,
