@@ -1,0 +1,54 @@
+# ============================================
+# POSetRDV Super-Admin - Docker Compose Staging
+# Déploiement SÉPARÉ de Mums Home (production)
+# ============================================
+# Ce fichier lance une instance INDÉPENDANTE qui:
+# - Utilise son propre conteneur et port (4001)
+# - A sa propre base de données MySQL séparée
+# - Ne touche JAMAIS aux données de Mums Home
+# ============================================
+
+services:
+  app:
+    build: .
+    container_name: posrdv-superadmin
+    restart: always
+    ports:
+      - "4001:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - MYSQL_HOST=db-superadmin
+      - MYSQL_PORT=3306
+      - MYSQL_USER=${MYSQL_USER:-pos_user}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-PosRdv2027!Secure}
+      - MYSQL_DATABASE=${MYSQL_DATABASE:-posrdv_superadmin}
+      - GOOGLE_CLIENT_EMAIL=${GOOGLE_CLIENT_EMAIL:-compteposrdv@posrdv.iam.gserviceaccount.com}
+      - GOOGLE_PRIVATE_KEY=${GOOGLE_PRIVATE_KEY}
+      - GOOGLE_CALENDAR_ID=${GOOGLE_CALENDAR_ID:-issamo1555@gmail.com}
+    volumes:
+      - ./data-superadmin:/app/data
+    depends_on:
+      db-superadmin:
+        condition: service_healthy
+
+  db-superadmin:
+    image: mariadb:10.11
+    container_name: posrdv-db-superadmin
+    restart: always
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-RootPosRdv2027!}
+      - MYSQL_DATABASE=${MYSQL_DATABASE:-posrdv_superadmin}
+      - MYSQL_USER=${MYSQL_USER:-pos_user}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-PosRdv2027!Secure}
+    volumes:
+      - posrdv_superadmin_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  posrdv_superadmin_data:
