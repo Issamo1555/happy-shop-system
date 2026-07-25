@@ -373,7 +373,7 @@ export const getProductsAction = createServerFn({ method: "GET" })
 
           // Insert SaaS categories & products
           const catId = "cat-saas-demo";
-          db.prepare("INSERT OR REPLACE INTO categories (id, name, slug, sort_order, active, tenant_id) VALUES (?, ?, ?, ?, 1, ?)")
+          db.prepare("REPLACE INTO categories (id, name, slug, sort_order, active, tenant_id) VALUES (?, ?, ?, ?, 1, ?)")
             .run(catId, "Présentations & Démos", "demos", 1, "system-tenant");
 
           const saasProducts = [
@@ -384,7 +384,7 @@ export const getProductsAction = createServerFn({ method: "GET" })
           ];
 
           for (const p of saasProducts) {
-            db.prepare("INSERT OR REPLACE INTO products (id, name, category, type, price, duration_min, bookable, active, deleted, sort_order, tenant_id) VALUES (?, ?, ?, 'service', 0, ?, 1, 1, 0, 0, ?)")
+            db.prepare("REPLACE INTO products (id, name, category, type, price, duration_min, bookable, active, deleted, sort_order, tenant_id) VALUES (?, ?, ?, 'service', 0, ?, 1, 1, 0, 0, ?)")
               .run(p.id, p.name, "demos", p.duration, "system-tenant");
           }
           console.log("🌱 Dynamic conversion complete!");
