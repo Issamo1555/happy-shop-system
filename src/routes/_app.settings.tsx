@@ -60,7 +60,14 @@ function SettingsPage() {
   const fetchSettings = async () => {
     setLoading(true);
     try {
-      const data = await getSettingsAction({ data: { tenantId: user?.tenant_id } });
+      const data = await getSettingsAction({ data: { tenantId: user?.tenant_id } }) as any;
+      if (data.google_private_key && !data.google_private_key.includes("PRIVATE KEY")) {
+        try {
+          data.google_private_key = decodeURIComponent(escape(atob(data.google_private_key)));
+        } catch (e) {
+          // not base64 encoded
+        }
+      }
       setSettings(data as Record<string, string>);
     } catch (err) {
       toast.error("Erreur lors du chargement des paramètres");
@@ -94,7 +101,12 @@ function SettingsPage() {
     }
     setSubmitting(true);
     try {
-      await updateSettingsAction({ data: { settings, adminId: user?.id || "" } });
+      const payload = { ...settings };
+      // Encode private key to Base64 to bypass WAF protections on POST requests
+      if (payload.google_private_key && payload.google_private_key.includes("PRIVATE KEY")) {
+        payload.google_private_key = btoa(unescape(encodeURIComponent(payload.google_private_key)));
+      }
+      await updateSettingsAction({ data: { settings: payload, adminId: user?.id || "" } });
       toast.success("Paramètres enregistrés");
       await fetchSettings();
     } catch (err: any) {

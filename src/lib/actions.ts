@@ -718,10 +718,22 @@ async function getGoogleConfig(tenantId: string) {
   
   const isDefault = tenantId === 'default-tenant' || tenantId === 'system-tenant';
   
+  let clientEmail = s.google_client_email || (isDefault ? undefined : "");
+  let privateKey = s.google_private_key || (isDefault ? undefined : "");
+  let calendarId = s.google_calendar_id || (isDefault ? undefined : "");
+  
+  if (privateKey && !privateKey.includes("PRIVATE KEY")) {
+    try {
+      privateKey = Buffer.from(privateKey, 'base64').toString('utf8');
+    } catch (e) {
+      // not base64
+    }
+  }
+
   return {
-    clientEmail: s.google_client_email || (isDefault ? undefined : ""),
-    privateKey: s.google_private_key || (isDefault ? undefined : ""),
-    calendarId: s.google_calendar_id || (isDefault ? undefined : "")
+    clientEmail,
+    privateKey,
+    calendarId
   };
 }
 
