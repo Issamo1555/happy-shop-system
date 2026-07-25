@@ -129,10 +129,10 @@ const navItems = [
               <Link
                 key={item.to}
                 to={item.to}
-                className="shrink-0 px-3 py-2 rounded-lg text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors flex items-center gap-2"
-                activeProps={{ className: "shrink-0 px-3 py-2 rounded-lg text-sm font-medium bg-primary-soft text-primary flex items-center gap-2" }}
+                className="shrink-0 whitespace-nowrap px-3 py-2 rounded-lg text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors flex items-center gap-2"
+                activeProps={{ className: "shrink-0 whitespace-nowrap px-3 py-2 rounded-lg text-sm font-medium bg-primary-soft text-primary flex items-center gap-2" }}
               >
-                <Icon className="w-4 h-4" />
+                <Icon className="w-4 h-4 shrink-0" />
                 <span className="hidden md:inline">{item.label}</span>
               </Link>
             );
