@@ -16,6 +16,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppTicketsRouteImport } from './routes/_app.tickets'
 import { Route as AppSettingsRouteImport } from './routes/_app.settings'
 import { Route as AppHistoriqueRouteImport } from './routes/_app.historique'
+import { Route as AppGuideStageRouteImport } from './routes/_app.guide-stage'
 import { Route as AppDbAdminRouteImport } from './routes/_app.db-admin'
 import { Route as AppDashboardRouteImport } from './routes/_app.dashboard'
 import { Route as AppCrmRouteImport } from './routes/_app.crm'
@@ -57,6 +58,11 @@ const AppSettingsRoute = AppSettingsRouteImport.update({
 const AppHistoriqueRoute = AppHistoriqueRouteImport.update({
   id: '/historique',
   path: '/historique',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppGuideStageRoute = AppGuideStageRouteImport.update({
+  id: '/guide-stage',
+  path: '/guide-stage',
   getParentRoute: () => AppRoute,
 } as any)
 const AppDbAdminRoute = AppDbAdminRouteImport.update({
@@ -112,6 +118,7 @@ export interface FileRoutesByFullPath {
   '/crm': typeof AppCrmRoute
   '/dashboard': typeof AppDashboardRoute
   '/db-admin': typeof AppDbAdminRoute
+  '/guide-stage': typeof AppGuideStageRoute
   '/historique': typeof AppHistoriqueRoute
   '/settings': typeof AppSettingsRoute
   '/tickets': typeof AppTicketsRoute
@@ -128,6 +135,7 @@ export interface FileRoutesByTo {
   '/crm': typeof AppCrmRoute
   '/dashboard': typeof AppDashboardRoute
   '/db-admin': typeof AppDbAdminRoute
+  '/guide-stage': typeof AppGuideStageRoute
   '/historique': typeof AppHistoriqueRoute
   '/settings': typeof AppSettingsRoute
   '/tickets': typeof AppTicketsRoute
@@ -146,6 +154,7 @@ export interface FileRoutesById {
   '/_app/crm': typeof AppCrmRoute
   '/_app/dashboard': typeof AppDashboardRoute
   '/_app/db-admin': typeof AppDbAdminRoute
+  '/_app/guide-stage': typeof AppGuideStageRoute
   '/_app/historique': typeof AppHistoriqueRoute
   '/_app/settings': typeof AppSettingsRoute
   '/_app/tickets': typeof AppTicketsRoute
@@ -164,6 +173,7 @@ export interface FileRouteTypes {
     | '/crm'
     | '/dashboard'
     | '/db-admin'
+    | '/guide-stage'
     | '/historique'
     | '/settings'
     | '/tickets'
@@ -180,6 +190,7 @@ export interface FileRouteTypes {
     | '/crm'
     | '/dashboard'
     | '/db-admin'
+    | '/guide-stage'
     | '/historique'
     | '/settings'
     | '/tickets'
@@ -197,6 +208,7 @@ export interface FileRouteTypes {
     | '/_app/crm'
     | '/_app/dashboard'
     | '/_app/db-admin'
+    | '/_app/guide-stage'
     | '/_app/historique'
     | '/_app/settings'
     | '/_app/tickets'
@@ -258,6 +270,13 @@ declare module '@tanstack/react-router' {
       path: '/historique'
       fullPath: '/historique'
       preLoaderRoute: typeof AppHistoriqueRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/guide-stage': {
+      id: '/_app/guide-stage'
+      path: '/guide-stage'
+      fullPath: '/guide-stage'
+      preLoaderRoute: typeof AppGuideStageRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/db-admin': {
@@ -328,6 +347,7 @@ interface AppRouteChildren {
   AppCrmRoute: typeof AppCrmRoute
   AppDashboardRoute: typeof AppDashboardRoute
   AppDbAdminRoute: typeof AppDbAdminRoute
+  AppGuideStageRoute: typeof AppGuideStageRoute
   AppHistoriqueRoute: typeof AppHistoriqueRoute
   AppSettingsRoute: typeof AppSettingsRoute
   AppTicketsRoute: typeof AppTicketsRoute
@@ -342,6 +362,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppCrmRoute: AppCrmRoute,
   AppDashboardRoute: AppDashboardRoute,
   AppDbAdminRoute: AppDbAdminRoute,
+  AppGuideStageRoute: AppGuideStageRoute,
   AppHistoriqueRoute: AppHistoriqueRoute,
   AppSettingsRoute: AppSettingsRoute,
   AppTicketsRoute: AppTicketsRoute,

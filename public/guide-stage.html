@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fiche de Suivi et Programme de Stage</title>
+    <!-- Tailwind CSS pour la mise en forme -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Mermaid.js pour le diagramme de Gantt -->
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <style>
+        @media print {
+            .no-print { display: none; }
+            body { background: white; }
+            .print-break { page-break-before: always; }
+        }
+        .task-detail {
+            font-size: 0.875rem;
+            color: #64748b;
+            margin-top: 0.5rem;
+            padding-left: 1rem;
+            list-style-type: disc;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans p-6 md:p-12">
+    <div class="max-w-5xl mx-auto bg-white rounded-xl shadow-lg overflow-hidden">
+        
+        <!-- HEADER -->
+        <div class="bg-indigo-600 p-8 text-white text-center">
+            <h1 class="text-3xl md:text-4xl font-bold mb-2">Programme de Stage & Fiche de Suivi</h1>
+            <p class="text-indigo-100 text-lg">Mission : Growth Hacker & Assurance Qualité (QA) — Durée : 4 Semaines</p>
+        </div>
+
+        <div class="p-8">
+            <!-- INFO -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10 text-sm">
+                <div class="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                    <span class="block text-slate-500 font-semibold mb-1">Stagiaire</span>
+                    <span class="block font-medium">_____________________</span>
+                </div>
+                <div class="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                    <span class="block text-slate-500 font-semibold mb-1">Encadrant</span>
+                    <span class="block font-medium">_____________________</span>
+                </div>
+                <div class="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                    <span class="block text-slate-500 font-semibold mb-1">Période</span>
+                    <span class="block font-medium">Du __/__/____ au __/__/____</span>
+                </div>
+            </div>
+
+            <!-- GANTT CHART -->
+            <h2 class="text-2xl font-bold text-slate-700 border-b-2 border-indigo-100 pb-2 mb-6">📅 Diagramme de Gantt (Avancement)</h2>
+            <div class="bg-white p-4 rounded-lg border border-slate-200 mb-10 overflow-x-auto">
+                <div class="mermaid">
+gantt
+    title Planning du Stage (4 Semaines)
+    dateFormat YYYY-MM-DD
+    axisFormat %W
+    
+    section Semaine 1 (QA & Data)
+    Tests fonctionnels & QA       :active, t1, 2026-07-27, 2d
+    Scraping et base de prospects :t2, after t1, 3d
+    
+    section Semaine 2 (Outils)
+    Prototype Chatbot WhatsApp    :t3, 2026-08-03, 3d
+    Landing Page / Site Vitrine   :t4, after t3, 2d
+    
+    section Semaine 3 (Marketing)
+    Création visuels & ciblages   :t5, 2026-08-10, 2d
+    Lancement & Suivi Ads         :t6, after t5, 3d
+    
+    section Semaine 4 (Ops & Bilan)
+    Script Backup Base de données :t7, 2026-08-17, 2d
+    Calcul du ROI des Leads       :t8, after t7, 2d
+    Présentation Finale           :t9, after t8, 1d
+                </div>
+            </div>
+
+            <!-- TASKS TRACKING -->
+            <h2 class="text-2xl font-bold text-slate-700 border-b-2 border-indigo-100 pb-2 mb-6 print-break">📝 Fiche de Suivi Détaillée des Tâches</h2>
+            
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-slate-100 text-slate-600 text-sm uppercase tracking-wider">
+                            <th class="p-4 border-b w-16">Statut</th>
+                            <th class="p-4 border-b w-32">Semaine</th>
+                            <th class="p-4 border-b">Description & Détails de la Tâche</th>
+                            <th class="p-4 border-b w-48">Validation Encadrant</th>
+                        </tr>
+                    </thead>
+                    <tbody class="text-slate-700">
+                        <!-- Semaine 1 -->
+                        <tr class="hover:bg-slate-50 transition-colors align-top">
+                            <td class="p-4 border-b text-center pt-5"><input type="checkbox" class="w-5 h-5 text-indigo-600 rounded"></td>
+                            <td class="p-4 border-b font-semibold pt-5">Semaine 1</td>
+                            <td class="p-4 border-b">
+                                <span class="font-medium text-slate-800 text-lg">Rapport de tests (QA) sur l'application SaaS</span>
+                                <ul class="task-detail">
+                                    <li>Tester la prise de rendez-vous de A à Z (Côté Agent et Côté Patient).</li>
+                                    <li>Identifier les problèmes d'affichage sur Smartphone et Tablette.</li>
+                                    <li>Rédiger un document Word avec captures d'écran des bugs trouvés.</li>
+                                </ul>
+                            </td>
+                            <td class="p-4 border-b text-slate-300 italic pt-5">Signature / Date</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50 transition-colors align-top">
+                            <td class="p-4 border-b text-center pt-5"><input type="checkbox" class="w-5 h-5 text-indigo-600 rounded"></td>
+                            <td class="p-4 border-b font-semibold text-slate-400"></td>
+                            <td class="p-4 border-b">
+                                <span class="font-medium text-slate-800 text-lg">Enrichissement BDD (Prospection Éthique & Légale)</span>
+                                <ul class="task-detail">
+                                    <li>Collecte de données <strong class="text-indigo-600">strictement publiques et légales (Halal)</strong>. Sources autorisées :
+                                        <ul class="ml-4 mt-1 space-y-1 text-slate-500 list-circle">
+                                            <li>- <strong>Google Maps / Google Places</strong> (Fiches d'établissements publics)</li>
+                                            <li>- <strong>Telecontact.ma / Pages Jaunes</strong> (Annuaires d'entreprises)</li>
+                                            <li>- <strong>DabaDoc / Médécin-Maroc</strong> (Annuaires médicaux publics)</li>
+                                            <li>- <strong>LinkedIn</strong> (Pages Entreprise et profils professionnels publics)</li>
+                                            <li>- <strong>Instagram / Facebook Ads Library</strong> (Comptes Business publics)</li>
+                                        </ul>
+                                    </li>
+                                    <li>Respect strict de la vie privée (Pas d'achat de bases volées, pas de tromperie).</li>
+                                    <li>Cibler les cliniques, dentistes, et cabinets de kinésithérapie.</li>
+                                    <li>Livrable : 500 à 1000 prospects qualifiés, collectés en toute transparence.</li>
+                                </ul>
+                            </td>
+                            <td class="p-4 border-b text-slate-300 italic pt-5">Signature / Date</td>
+                        </tr>
+
+                        <!-- Semaine 2 -->
+                        <tr class="hover:bg-slate-50 transition-colors bg-slate-50/50 align-top">
+                            <td class="p-4 border-b text-center pt-5"><input type="checkbox" class="w-5 h-5 text-indigo-600 rounded"></td>
+                            <td class="p-4 border-b font-semibold pt-5">Semaine 2</td>
+                            <td class="p-4 border-b">
+                                <span class="font-medium text-slate-800 text-lg">Prototype de Chatbot WhatsApp</span>
+                                <ul class="task-detail">
+                                    <li>Dessiner l'arborescence des questions/réponses (Ex: "Tapez 1 pour un RDV").</li>
+                                    <li>Configurer un bot simple sur Twilio, ManyChat ou via API Meta.</li>
+                                    <li>Faire tester le robot en interne via un numéro de téléphone de test.</li>
+                                </ul>
+                            </td>
+                            <td class="p-4 border-b text-slate-300 italic pt-5">Signature / Date</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50 transition-colors bg-slate-50/50 align-top">
+                            <td class="p-4 border-b text-center pt-5"><input type="checkbox" class="w-5 h-5 text-indigo-600 rounded"></td>
+                            <td class="p-4 border-b font-semibold text-slate-400"></td>
+                            <td class="p-4 border-b">
+                                <span class="font-medium text-slate-800 text-lg">Création de la Landing Page (Site Commercial)</span>
+                                <ul class="task-detail">
+                                    <li>Créer une page d'accroche (WordPress, Framer, Wix ou HTML/CSS).</li>
+                                    <li>Mettre en avant les fonctionnalités du SaaS (Calendrier, Encaissement, CRM).</li>
+                                    <li>Intégrer un formulaire de contact pour récolter les adresses emails.</li>
+                                </ul>
+                            </td>
+                            <td class="p-4 border-b text-slate-300 italic pt-5">Signature / Date</td>
+                        </tr>
+
+                        <!-- Semaine 3 -->
+                        <tr class="hover:bg-slate-50 transition-colors align-top">
+                            <td class="p-4 border-b text-center pt-5"><input type="checkbox" class="w-5 h-5 text-indigo-600 rounded"></td>
+                            <td class="p-4 border-b font-semibold pt-5">Semaine 3</td>
+                            <td class="p-4 border-b">
+                                <span class="font-medium text-slate-800 text-lg">Création Visuelle (Facebook Ads)</span>
+                                <ul class="task-detail">
+                                    <li>Concevoir 3 visuels ou courtes vidéos publicitaires (Canva/Figma).</li>
+                                    <li>Rédiger des accroches (Copywriting) ciblant les professionnels (B2B).</li>
+                                    <li>Définir les critères de ciblage (Audience B2B, Villes spécifiques).</li>
+                                </ul>
+                            </td>
+                            <td class="p-4 border-b text-slate-300 italic pt-5">Signature / Date</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50 transition-colors align-top">
+                            <td class="p-4 border-b text-center pt-5"><input type="checkbox" class="w-5 h-5 text-indigo-600 rounded"></td>
+                            <td class="p-4 border-b font-semibold text-slate-400"></td>
+                            <td class="p-4 border-b">
+                                <span class="font-medium text-slate-800 text-lg">Lancement Campagne de Lead Generation</span>
+                                <ul class="task-detail">
+                                    <li>Paramétrer la campagne sur Meta Business Manager.</li>
+                                    <li>Faire pointer les publicités vers la Landing Page ou un formulaire intégré.</li>
+                                    <li>Suivre le budget quotidien et ajuster pour réduire le Coût Par Lead (CPL).</li>
+                                </ul>
+                            </td>
+                            <td class="p-4 border-b text-slate-300 italic pt-5">Signature / Date</td>
+                        </tr>
+
+                        <!-- Semaine 4 -->
+                        <tr class="hover:bg-slate-50 transition-colors bg-slate-50/50 align-top">
+                            <td class="p-4 border-b text-center pt-5"><input type="checkbox" class="w-5 h-5 text-indigo-600 rounded"></td>
+                            <td class="p-4 border-b font-semibold pt-5">Semaine 4</td>
+                            <td class="p-4 border-b">
+                                <span class="font-medium text-slate-800 text-lg">Automatisation des Sauvegardes (Ops)</span>
+                                <ul class="task-detail">
+                                    <li>Créer un script (Node.js/Python) ou utiliser un utilitaire système.</li>
+                                    <li>Se connecter à la base de données SQL pour générer un "Dump".</li>
+                                    <li>Envoyer automatiquement le fichier vers un espace Cloud (ex: Google Drive).</li>
+                                </ul>
+                            </td>
+                            <td class="p-4 border-b text-slate-300 italic pt-5">Signature / Date</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50 transition-colors bg-slate-50/50 align-top">
+                            <td class="p-4 border-b text-center pt-5"><input type="checkbox" class="w-5 h-5 text-indigo-600 rounded"></td>
+                            <td class="p-4 border-b font-semibold text-slate-400"></td>
+                            <td class="p-4 border-b">
+                                <span class="font-medium text-slate-800 text-lg">Rapport Analytique et Présentation</span>
+                                <ul class="task-detail">
+                                    <li>Calculer le Retour sur Investissement (Budget dépensé / Leads générés).</li>
+                                    <li>Rassembler tous les livrables dans un dossier de fin de stage.</li>
+                                    <li>Présentation orale de 15 minutes à l'encadrant.</li>
+                                </ul>
+                            </td>
+                            <td class="p-4 border-b text-slate-300 italic pt-5">Signature / Date</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Footer / Actions -->
+            <div class="mt-10 flex justify-end space-x-4 no-print">
+                <button onclick="window.print()" class="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg shadow-sm transition-colors flex items-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
+                    Imprimer / Sauvegarder en PDF
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        mermaid.initialize({ startOnLoad: true, theme: 'base', themeVariables: {
+            primaryColor: '#e0e7ff',
+            primaryBorderColor: '#6366f1',
+            primaryTextColor: '#334155',
+            secondaryColor: '#f1f5f9',
+            tertiaryColor: '#fff'
+        }});
+    </script>
+</body>
+</html>
