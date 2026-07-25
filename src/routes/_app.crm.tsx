@@ -1418,8 +1418,8 @@ function CRMPage() {
         </div>
       </div>
 
-      <div className="bg-white border rounded-xl shadow-sm overflow-hidden">
-        <Table>
+      <div className="bg-white border rounded-xl shadow-sm overflow-x-auto">
+        <Table className="min-w-[800px]">
           <TableHeader>
             <TableRow className="bg-muted/30">
               <TableHead>Prospect & Spécialité</TableHead>
