@@ -357,8 +357,8 @@ function SettingsPage() {
               ) : teamMembers.length === 0 ? (
                 <p className="text-center text-muted-foreground py-8">Aucun membre trouvé.</p>
               ) : (
-                <div className="rounded-lg border overflow-hidden">
-                  <table className="w-full">
+                <div className="rounded-lg border overflow-x-auto w-full">
+                  <table className="w-full min-w-[600px]">
                     <thead>
                       <tr className="bg-muted/50 text-left text-xs uppercase tracking-wider text-muted-foreground">
                         <th className="px-4 py-3 font-semibold">Nom</th>
@@ -370,10 +370,10 @@ function SettingsPage() {
                     <tbody className="divide-y">
                       {teamMembers.map((member: any) => (
                         <tr key={member.id} className="hover:bg-muted/30 transition-colors">
-                          <td className="px-4 py-3 font-medium">{member.full_name || "—"}</td>
-                          <td className="px-4 py-3 text-sm text-muted-foreground">{member.email}</td>
-                          <td className="px-4 py-3"><RoleBadge role={member.role} /></td>
-                          <td className="px-4 py-3 text-right">
+                          <td className="px-4 py-3 font-medium whitespace-nowrap">{member.full_name || "—"}</td>
+                          <td className="px-4 py-3 text-sm text-muted-foreground whitespace-nowrap">{member.email}</td>
+                          <td className="px-4 py-3 whitespace-nowrap"><RoleBadge role={member.role} /></td>
+                          <td className="px-4 py-3 text-right whitespace-nowrap">
                             {member.role !== "super_admin" && member.id !== user?.id && (
                               <div className="flex items-center justify-end gap-1">
                                 <Button variant="ghost" size="icon" className="h-8 w-8" title="Modifier le rôle" onClick={() => { setEditRoleTarget(member); setEditRoleValue(member.role); }}>

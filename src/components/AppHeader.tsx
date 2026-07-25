@@ -119,7 +119,7 @@ const navItems = [
           </div>
         </Link>
 
-        <nav className="flex items-center gap-1 flex-1">
+        <nav className="flex items-center gap-1 flex-1 overflow-x-auto hide-scrollbar pb-1">
           {navItems.map((item) => {
             if (item.adminOnly && !isAdmin) return null;
             if ((item as any).superAdminOnly && !isSuperAdmin) return null;
@@ -129,8 +129,8 @@ const navItems = [
               <Link
                 key={item.to}
                 to={item.to}
-                className="px-3 py-2 rounded-lg text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors flex items-center gap-2"
-                activeProps={{ className: "px-3 py-2 rounded-lg text-sm font-medium bg-primary-soft text-primary flex items-center gap-2" }}
+                className="shrink-0 px-3 py-2 rounded-lg text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors flex items-center gap-2"
+                activeProps={{ className: "shrink-0 px-3 py-2 rounded-lg text-sm font-medium bg-primary-soft text-primary flex items-center gap-2" }}
               >
                 <Icon className="w-4 h-4" />
                 <span className="hidden md:inline">{item.label}</span>

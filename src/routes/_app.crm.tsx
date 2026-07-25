@@ -1368,7 +1368,7 @@ function CRMPage() {
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
-        <div className="flex gap-3 w-full md:w-auto items-center">
+        <div className="flex flex-wrap gap-3 w-full md:w-auto items-center">
           {(searchQuery || cityFilter !== "all" || statusFilter !== "all") && (
             <Button 
               variant="ghost" 
@@ -1385,8 +1385,8 @@ function CRMPage() {
           )}
 
           <Select value={cityFilter} onValueChange={setCityFilter}>
-            <SelectTrigger className="w-[160px] bg-slate-50 border-slate-200">
-              <MapPin className="w-4 h-4 mr-2 text-slate-400" />
+            <SelectTrigger className="w-[160px] flex-1 sm:flex-none bg-slate-50 border-slate-200">
+              <MapPin className="w-4 h-4 mr-2 text-slate-400 shrink-0" />
               <SelectValue placeholder="Ville" />
             </SelectTrigger>
             <SelectContent>
@@ -1398,8 +1398,8 @@ function CRMPage() {
           </Select>
 
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[160px] bg-slate-50 border-slate-200">
-              <Filter className="w-4 h-4 mr-2 text-slate-400" />
+            <SelectTrigger className="w-[160px] flex-1 sm:flex-none bg-slate-50 border-slate-200">
+              <Filter className="w-4 h-4 mr-2 text-slate-400 shrink-0" />
               <SelectValue placeholder="Statut" />
             </SelectTrigger>
             <SelectContent>
