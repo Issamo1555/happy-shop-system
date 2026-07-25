@@ -1352,20 +1352,35 @@ export const updateProspectAction = createServerFn({ method: "POST" })
       if (prospect) {
         const appointmentId = crypto.randomUUID();
         const startsAt = data.rdvAt;
+        const serviceName = "Démonstration CRM";
+        const notes = `RDV prospect programmé par l'agent. Notes : ${data.notes || ''}`;
+        const durationMin = 60;
         
+        // Sync to Google Calendar
+        const googleConfig = await getGoogleConfig(user.tenant_id);
+        const googleEventId = await syncEventToGoogle({
+          id: appointmentId,
+          client_name: prospect.name,
+          service_name: serviceName,
+          starts_at: startsAt,
+          duration_min: durationMin,
+          notes: notes
+        }, googleConfig);
+
         await db.execute(`
-          INSERT INTO appointments (id, client_id, client_name, product_id, service_name, starts_at, duration_min, notes, created_by, created_at, tenant_id)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO appointments (id, client_id, client_name, product_id, service_name, starts_at, duration_min, notes, created_by, google_event_id, created_at, tenant_id)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `, [
           appointmentId, 
           null, 
           prospect.name, 
           null, 
-          "Démonstration CRM", 
+          serviceName, 
           startsAt, 
-          60, 
-          `RDV prospect programmé par l'agent. Notes : ${data.notes || ''}`, 
+          durationMin, 
+          notes, 
           data.userId, 
+          googleEventId,
           new Date().toISOString().replace('.000Z', '').replace('Z', ''),
           user.tenant_id
         ]);
