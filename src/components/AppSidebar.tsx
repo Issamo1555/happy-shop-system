@@ -283,7 +283,7 @@ export function AppSidebar() {
       </div>
 
       {/* Mobile Top Header (only visible on small screens) */}
-      <div className="lg:hidden sticky top-0 z-40 flex items-center justify-between px-4 h-16 bg-card border-b border-border shadow-sm w-full">
+      <div className="lg:hidden fixed top-0 left-0 right-0 z-40 flex items-center justify-between px-4 h-16 bg-card border-b border-border shadow-sm w-full">
         <div className="flex items-center gap-3">
           {user?.tenant_logo ? (
             <img src={user.tenant_logo} alt="Logo" className="w-8 h-8 drop-shadow-sm rounded-md" />

@@ -235,7 +235,7 @@ function AppLayout() {
         <div className="flex flex-1 relative">
           <AppSidebar />
           <main className="lg:pl-64 flex flex-col flex-1 min-h-screen transition-all duration-300">
-            <div className="flex-1 w-full max-w-[1400px] mx-auto px-4 lg:px-6 py-6">
+            <div className="flex-1 w-full max-w-[1400px] mx-auto px-4 lg:px-6 py-6 pt-20 lg:pt-6">
               <Outlet />
             </div>
           </main>
