@@ -997,6 +997,30 @@ export const getTableDataAction = createServerFn({ method: "POST" })
   });
 
 
+const activeUsers = new Map<string, { email: string, name: string, role: string, tenant: string, lastActive: number }>();
+
+const updateActiveUser = (user: any) => {
+  if (!user) return;
+  activeUsers.set(user.email, {
+    email: user.email,
+    name: user.full_name || user.fullName || "Utilisateur",
+    role: user.role,
+    tenant: user.tenant_name || user.tenant_id || "System",
+    lastActive: Date.now()
+  });
+};
+
+export const getActiveUsersAction = createServerFn({ method: "GET" })
+  .handler(async () => {
+    const now = Date.now();
+    for (const [email, info] of activeUsers.entries()) {
+      if (now - info.lastActive > 5 * 60 * 1000) { // 5 minutes inactivity timeout
+        activeUsers.delete(email);
+      }
+    }
+    return Array.from(activeUsers.values());
+  });
+
 const logAccess = (email: string, status: string, details: string) => {
   try {
     const logDir = join(process.cwd(), 'data');
@@ -1052,6 +1076,7 @@ export const loginAction = createServerFn({ method: "POST" })
     // Success: reset attempts and return user (without password)
     resetLoginAttempts(email);
     logAccess(email, "SUCCESS", `Role: ${user.role}, Tenant: ${user.tenant_id} - ${deviceDetails}`);
+    updateActiveUser(user);
     const { password: _, ...safeUser } = user;
     return safeUser;
   });
@@ -1140,6 +1165,7 @@ export const validateSessionAction = createServerFn({ method: "POST" })
       }
     }
 
+    updateActiveUser(user);
     return user;
   });
 
