@@ -17,18 +17,18 @@ import logo from "@/assets/logo.png";
 
 const navItems = [
   { to: "/dashboard", label: "Bureau", icon: LayoutDashboard },
-  { to: "/caisse", label: "Caisse", icon: ShoppingBag },
-  { to: "/catalogue", label: "Catalogue", icon: Package },
-  { to: "/clients", label: "Clients", icon: Users },
-  { to: "/agenda", label: "Agenda", icon: Calendar },
-  { to: "/historique", label: "Historique", icon: Receipt },
-  { to: "/tickets", label: "Tickets", icon: LifeBuoy },
+  { to: "/caisse", label: "Caisse", icon: ShoppingBag, module: "caisse" },
+  { to: "/catalogue", label: "Catalogue", icon: Package, module: "catalogue" },
+  { to: "/clients", label: "Clients", icon: Users, module: "clients" },
+  { to: "/agenda", label: "Agenda", icon: Calendar, module: "agenda" },
+  { to: "/historique", label: "Historique", icon: Receipt, module: "historique" },
+  { to: "/tickets", label: "Tickets", icon: LifeBuoy, module: "tickets" },
   { to: "/settings", label: "Paramètres", icon: Settings, adminOnly: true },
   { to: "/db-admin", label: "Base de données", icon: Database, superAdminOnly: true },
   { to: "/admin-tenants", label: "Centres (Tenants)", icon: Building2, superAdminOnly: true },
   { to: "/access-logs", label: "Logs d'accès", icon: Shield, superAdminOnly: true },
-  { to: "/crm", label: "Prospection", icon: PhoneCall, crmAccessOnly: true },
-  { to: "/guide-stage", label: "Programme Stage", icon: FileText, crmAccessOnly: true },
+  { to: "/crm", label: "Prospection", icon: PhoneCall, crmAccessOnly: true, module: "crm" },
+  { to: "/guide-stage", label: "Programme Stage", icon: FileText, crmAccessOnly: true, module: "crm" },
 ] as const;
 
 export function AppSidebar() {
@@ -132,6 +132,12 @@ export function AppSidebar() {
           if (item.adminOnly && !isAdmin) return null;
           if ((item as any).superAdminOnly && !isSuperAdmin) return null;
           if ((item as any).crmAccessOnly && user?.role !== 'super_admin' && user?.role !== 'sales') return null;
+          
+          // Check if module is enabled for the current tenant
+          if ((item as any).module && user?.enabled_modules && !user.enabled_modules.includes((item as any).module)) {
+            return null;
+          }
+
           const Icon = item.icon;
           return (
             <Link

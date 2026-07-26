@@ -124,9 +124,10 @@ export const createTenantAction = createServerFn({ method: "POST" })
     const existing = await db.queryOne("SELECT id FROM tenants WHERE slug = ?", [slug]);
     if (existing) throw new Error("Un tenant avec ce slug existe déjà");
 
+    const defaultModules = '["caisse", "catalogue", "clients", "agenda", "historique", "tickets", "crm"]';
     await db.execute(
-      "INSERT INTO tenants (id, name, slug, logo_url, primary_color, invite_code, active) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      [id, data.name, slug, data.logo_url || null, data.primary_color || '#D4A574', data.invite_code || null, data.active !== false ? 1 : 0]
+      "INSERT INTO tenants (id, name, slug, logo_url, primary_color, invite_code, active, enabled_modules) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      [id, data.name, slug, data.logo_url || null, data.primary_color || '#D4A574', data.invite_code || null, data.active !== false ? 1 : 0, defaultModules]
     );
 
     // Create default admin for the tenant
@@ -341,9 +342,12 @@ export const deletePricingOfferAction = createServerFn({ method: "POST" })
   });
 
 export const updateTenantSubscriptionAction = createServerFn({ method: "POST" })
-  .handler(async ({ data }: { data: { tenantId: string, planId: string, endDate: string, userId: string } }) => {
+  .handler(async ({ data }: { data: { tenantId: string, planId: string, endDate: string, enabledModules: string[], userId: string } }) => {
     await checkSuperAdmin(data.userId);
-    await db.execute("UPDATE tenants SET subscription_plan_id = ?, subscription_end_date = ? WHERE id = ?", [data.planId, data.endDate, data.tenantId]);
+    await db.execute(
+      "UPDATE tenants SET subscription_plan_id = ?, subscription_end_date = ?, enabled_modules = ? WHERE id = ?", 
+      [data.planId, data.endDate, JSON.stringify(data.enabledModules), data.tenantId]
+    );
     return { success: true };
   });
 
@@ -1096,7 +1100,7 @@ export const loginAction = createServerFn({ method: "POST" })
 
     // Check if tenant is active
     if (user.tenant_id) {
-      const tenant = await db.queryOne("SELECT id, name, slug, logo_url, primary_color, active FROM tenants WHERE id = ?", [user.tenant_id]);
+      const tenant = await db.queryOne("SELECT id, name, slug, logo_url, primary_color, active, enabled_modules FROM tenants WHERE id = ?", [user.tenant_id]);
       if (tenant && !tenant.active) {
         logAccess(email, "FAILED", `Tenant inactive - ${deviceDetails}`);
         throw new Error("Ce compte est désactivé. Contactez le super-administrateur.");
@@ -1106,6 +1110,9 @@ export const loginAction = createServerFn({ method: "POST" })
       user.tenant_slug = tenant?.slug || "";
       user.tenant_logo = tenant?.logo_url || "";
       user.tenant_color = tenant?.primary_color || "#D4A574";
+      user.enabled_modules = tenant?.enabled_modules ? JSON.parse(tenant.enabled_modules) : ["caisse", "catalogue", "clients", "agenda", "historique", "tickets", "crm"];
+    } else {
+      user.enabled_modules = ["caisse", "catalogue", "clients", "agenda", "historique", "tickets", "crm", "access-logs"];
     }
     
     // Success: reset attempts and return user (without password)
@@ -1191,13 +1198,16 @@ export const validateSessionAction = createServerFn({ method: "POST" })
 
     // Attach tenant info
     if (user.tenant_id) {
-      const tenant = await db.queryOne("SELECT id, name, slug, logo_url, primary_color, active FROM tenants WHERE id = ?", [user.tenant_id]);
+      const tenant = await db.queryOne("SELECT id, name, slug, logo_url, primary_color, active, enabled_modules FROM tenants WHERE id = ?", [user.tenant_id]);
       if (tenant) {
         user.tenant_name = tenant.name;
         user.tenant_slug = tenant.slug;
         user.tenant_logo = tenant.logo_url;
         user.tenant_color = tenant.primary_color;
+        user.enabled_modules = tenant.enabled_modules ? JSON.parse(tenant.enabled_modules) : ["caisse", "catalogue", "clients", "agenda", "historique", "tickets", "crm"];
       }
+    } else {
+      user.enabled_modules = ["caisse", "catalogue", "clients", "agenda", "historique", "tickets", "crm", "access-logs"];
     }
 
     updateActiveUser(user);

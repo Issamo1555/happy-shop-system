@@ -1,6 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { getTenantsAction, createTenantAction, updateTenantAction, toggleTenantActiveAction, seedTenantDataAction, getTenantUsersAction, deleteTenantUserAction, resetTenantUserPasswordAction, exportDatabaseAction, importDatabaseAction } from "@/lib/actions";
+import { 
+  getTenantsAction, createTenantAction, updateTenantAction, 
+  toggleTenantActiveAction, seedTenantDataAction, getTenantUsersAction, 
+  deleteTenantUserAction, resetTenantUserPasswordAction, exportDatabaseAction, 
+  importDatabaseAction, updateTenantSubscriptionAction 
+} from "@/lib/actions";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Building2, Plus, Search, Settings, Building, MapPin, DatabaseZap, Users, Trash2, Key, Check, X, Tag, AlertCircle } from "lucide-react";
+import { Building2, Plus, Search, Settings, Building, MapPin, DatabaseZap, Users, Trash2, Key, Check, X, Tag, AlertCircle, Shield } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -28,6 +33,9 @@ interface Tenant {
   invite_code: string | null;
   active: boolean;
   created_at: string;
+  subscription_plan_id?: string | null;
+  subscription_end_date?: string | null;
+  enabled_modules?: string | null;
   users_count?: number;
   clients_count?: number;
   total_sales?: number;
@@ -56,6 +64,22 @@ function AdminTenantsPage() {
   const [seedingTenant, setSeedingTenant] = useState<Tenant | null>(null);
   const [seedPrefix, setSeedPrefix] = useState("");
   const [isSeeding, setIsSeeding] = useState(false);
+
+  // Modules & Subscription State
+  const [modulesOpen, setModulesOpen] = useState(false);
+  const [selectedTenantForModules, setSelectedTenantForModules] = useState<Tenant | null>(null);
+  const [planId, setPlanId] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [enabledModules, setEnabledModules] = useState<Record<string, boolean>>({
+    caisse: true,
+    catalogue: true,
+    clients: true,
+    agenda: true,
+    historique: true,
+    tickets: true,
+    crm: true
+  });
+  const [savingModules, setSavingModules] = useState(false);
 
   // Form State
   const [name, setName] = useState("");
@@ -152,6 +176,56 @@ function AdminTenantsPage() {
       toast.error(err.message || "Erreur lors de la génération");
     } finally {
       setIsSeeding(false);
+    }
+  };
+
+  const handleOpenModules = (t: Tenant) => {
+    setSelectedTenantForModules(t);
+    setPlanId(t.subscription_plan_id || "Starter");
+    setEndDate(t.subscription_end_date ? t.subscription_end_date.split("T")[0] : "");
+    
+    // Parse modules
+    let activeList = ["caisse", "catalogue", "clients", "agenda", "historique", "tickets", "crm"];
+    if (t.enabled_modules) {
+      try {
+        activeList = JSON.parse(t.enabled_modules);
+      } catch (e) {}
+    }
+    
+    setEnabledModules({
+      caisse: activeList.includes("caisse"),
+      catalogue: activeList.includes("catalogue"),
+      clients: activeList.includes("clients"),
+      agenda: activeList.includes("agenda"),
+      historique: activeList.includes("historique"),
+      tickets: activeList.includes("tickets"),
+      crm: activeList.includes("crm")
+    });
+    setModulesOpen(true);
+  };
+
+  const handleSaveModules = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedTenantForModules) return;
+    setSavingModules(true);
+    try {
+      const activeList = Object.keys(enabledModules).filter(k => enabledModules[k]);
+      await updateTenantSubscriptionAction({
+        data: {
+          tenantId: selectedTenantForModules.id,
+          planId,
+          endDate,
+          enabledModules: activeList,
+          userId: user.id
+        }
+      });
+      toast.success("Abonnement et modules mis à jour avec succès !");
+      setModulesOpen(false);
+      fetchTenants();
+    } catch (err: any) {
+      toast.error(err.message || "Erreur de sauvegarde");
+    } finally {
+      setSavingModules(false);
     }
   };
 
@@ -426,6 +500,10 @@ function AdminTenantsPage() {
                     <Users className="w-4 h-4 mr-2" />
                     Personnel
                   </Button>
+                  <Button variant="outline" size="sm" onClick={() => handleOpenModules(t)} className="text-purple-600 border-purple-200 hover:bg-purple-50">
+                    <Shield className="w-4 h-4 mr-2" />
+                    Abonnement & Modules
+                  </Button>
                   <Button variant="outline" size="sm" onClick={() => handleOpenSeed(t)} className="text-blue-600 border-blue-200 hover:bg-blue-50">
                     <DatabaseZap className="w-4 h-4 mr-2" />
                     Tests
@@ -560,6 +638,81 @@ function AdminTenantsPage() {
               </Table>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* MODULES & SUBSCRIPTION MODAL */}
+      <Dialog open={modulesOpen} onOpenChange={setModulesOpen}>
+        <DialogContent className="sm:max-w-lg bg-white/95 backdrop-blur-md">
+          <DialogHeader>
+            <DialogTitle className="font-display text-2xl text-primary flex items-center gap-2">
+              <Shield className="w-5 h-5" />
+              Abonnement & Modules : {selectedTenantForModules?.name}
+            </DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSaveModules} className="space-y-6 py-4">
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold text-muted-foreground border-b pb-2 uppercase tracking-wider">Abonnement</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="sub-plan">Plan d'abonnement</Label>
+                  <select 
+                    id="sub-plan"
+                    value={planId} 
+                    onChange={e => setPlanId(e.target.value)}
+                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <option value="Starter">Starter</option>
+                    <option value="Standard">Standard</option>
+                    <option value="Premium">Premium</option>
+                    <option value="Custom">Custom / Sur-mesure</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="sub-date">Date de fin</Label>
+                  <Input 
+                    id="sub-date"
+                    type="date" 
+                    value={endDate} 
+                    onChange={e => setEndDate(e.target.value)} 
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold text-muted-foreground border-b pb-2 uppercase tracking-wider">Modules Actifs</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {Object.keys(enabledModules).map((key) => (
+                  <div key={key} className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
+                    <div className="space-y-0.5">
+                      <Label htmlFor={`module-${key}`} className="capitalize font-medium text-sm">
+                        {key === 'caisse' ? 'Caisse (Facturation)' : 
+                         key === 'catalogue' ? 'Catalogue Produits' : 
+                         key === 'clients' ? 'Gestion Clients' : 
+                         key === 'agenda' ? 'Agenda & RDV' : 
+                         key === 'historique' ? 'Historique' : 
+                         key === 'tickets' ? 'Assistance Support' : 
+                         key === 'crm' ? 'Prospection (CRM)' : key}
+                      </Label>
+                    </div>
+                    <Switch 
+                      id={`module-${key}`}
+                      checked={enabledModules[key]} 
+                      onCheckedChange={(checked) => setEnabledModules(prev => ({ ...prev, [key]: checked }))} 
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <DialogFooter className="pt-4 border-t">
+              <Button type="button" variant="outline" onClick={() => setModulesOpen(false)} disabled={savingModules}>Annuler</Button>
+              <Button type="submit" disabled={savingModules} className="bg-primary hover:bg-primary/90 text-white">
+                {savingModules ? "Enregistrement..." : "Enregistrer"}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
         </TabsContent>

@@ -1,4 +1,4 @@
-import { createFileRoute, Outlet, Navigate } from "@tanstack/react-router";
+import { createFileRoute, Outlet, Navigate, useLocation } from "@tanstack/react-router";
 import { useAuth } from "@/lib/auth-context";
 import { AppSidebar } from "@/components/AppSidebar";
 import { CartProvider } from "@/lib/cart-context";
@@ -7,8 +7,20 @@ export const Route = createFileRoute("/_app")({
   component: AppLayout,
 });
 
+const moduleRoutes: Record<string, string> = {
+  "/caisse": "caisse",
+  "/catalogue": "catalogue",
+  "/clients": "clients",
+  "/agenda": "agenda",
+  "/historique": "historique",
+  "/tickets": "tickets",
+  "/crm": "crm",
+  "/guide-stage": "crm",
+};
+
 function AppLayout() {
-  const { isAuthenticated, loading, isStaff } = useAuth();
+  const { isAuthenticated, loading, isStaff, user } = useAuth();
+  const { pathname } = useLocation();
 
   if (loading) {
     return (
@@ -36,6 +48,17 @@ function AppLayout() {
       </div>
     );
   }
+
+  // Route protection for disabled modules
+  const matchedRoute = Object.keys(moduleRoutes).find(route => pathname.startsWith(route));
+  if (matchedRoute) {
+    const requiredModule = moduleRoutes[matchedRoute];
+    if (user?.enabled_modules && !user.enabled_modules.includes(requiredModule)) {
+      return <Navigate to="/dashboard" />;
+    }
+  }
+
+
 
   return (
     <CartProvider>
