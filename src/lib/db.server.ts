@@ -2,6 +2,7 @@ import Database from "better-sqlite3";
 import mysql from "mysql2/promise";
 import { join } from "path";
 import bcrypt from "bcryptjs";
+import { existsSync, mkdirSync, readdirSync, writeFileSync, readFileSync } from "fs";
 
 // Database Configuration
 const isMySQL = !!process.env.MYSQL_HOST;
@@ -752,10 +753,31 @@ export const initServerDb = async () => {
           [p.id, p.name, "demos", p.duration, "system-tenant"]
         );
       }
-    }
     console.log("🌱 SaaS demo products seeded for system-tenant!");
   } catch (err: any) {
     console.error("Error seeding SaaS products:", err.message);
+  }
+
+  // Sync existing payment proofs to dist/client on startup
+  try {
+    const publicDir = join(process.cwd(), "public", "payment_proofs");
+    const distDir = join(process.cwd(), "dist", "client", "payment_proofs");
+    if (existsSync(publicDir)) {
+      if (!existsSync(distDir)) {
+        mkdirSync(distDir, { recursive: true });
+      }
+      const files = readdirSync(publicDir);
+      for (const file of files) {
+        const src = join(publicDir, file);
+        const dest = join(distDir, file);
+        if (!existsSync(dest)) {
+          writeFileSync(dest, readFileSync(src));
+        }
+      }
+      console.log(`✅ Synced ${files.length} payment proofs to static directory`);
+    }
+  } catch (e) {
+    console.error("Failed to sync payment proofs on startup:", e);
   }
 };
 

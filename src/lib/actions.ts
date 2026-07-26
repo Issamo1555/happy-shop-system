@@ -1866,23 +1866,3 @@ export const clearPaymentProofAction = createServerFn({ method: "POST" })
     return { success: true };
   });
 
-// Sync existing payment proofs to dist/client on startup
-try {
-  const publicDir = join(process.cwd(), "public", "payment_proofs");
-  const distDir = join(process.cwd(), "dist", "client", "payment_proofs");
-  if (existsSync(publicDir)) {
-    if (!existsSync(distDir)) {
-      mkdirSync(distDir, { recursive: true });
-    }
-    const files = readdirSync(publicDir);
-    for (const file of files) {
-      const src = join(publicDir, file);
-      const dest = join(distDir, file);
-      if (!existsSync(dest)) {
-        writeFileSync(dest, readFileSync(src));
-      }
-    }
-  }
-} catch (e) {
-  console.error("Failed to sync payment proofs", e);
-}
