@@ -753,6 +753,7 @@ export const initServerDb = async () => {
           [p.id, p.name, "demos", p.duration, "system-tenant"]
         );
       }
+    }
     console.log("🌱 SaaS demo products seeded for system-tenant!");
   } catch (err: any) {
     console.error("Error seeding SaaS products:", err.message);
