@@ -72,7 +72,10 @@ function DBAdminPage() {
     setLoading(true);
     try {
       const res = await downloadDatabaseAction({ data: { adminId: user.id } });
-      const blob = new Blob([Uint8Array.from(atob(res.content), c => c.charCodeAt(0))], { type: 'application/x-sqlite3' });
+      const isSql = res.filename.endsWith('.sql');
+      const blob = new Blob([Uint8Array.from(atob(res.content), c => c.charCodeAt(0))], { 
+        type: isSql ? 'text/plain' : 'application/x-sqlite3' 
+      });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -100,7 +103,7 @@ function DBAdminPage() {
         <div className="flex items-center gap-4">
           <Button variant="outline" size="sm" className="gap-2 text-sage border-sage/50 hover:bg-sage/10" onClick={handleBackup} disabled={loading}>
             <ShieldCheck className="w-4 h-4" />
-            Sauvegarde (.db)
+            Télécharger sauvegarde
           </Button>
 
           <Button variant="outline" size="sm" className="gap-2" onClick={exportToCSV} disabled={data.length === 0}>

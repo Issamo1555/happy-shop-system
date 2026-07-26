@@ -966,12 +966,47 @@ export const getClientSalesAction = createServerFn({ method: "GET" })
 export const downloadDatabaseAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: { adminId: string } }) => {
     await checkAdmin(data.adminId);
-    const dbPath = join(process.cwd(), "pos.db");
-    const buffer = readFileSync(dbPath);
-    return {
-      content: buffer.toString("base64"),
-      filename: `pos_backup_${new Date().toISOString().split("T")[0]}.db`
-    };
+    
+    if (process.env.MYSQL_HOST) {
+      const tables = await db.getTables();
+      let sqlDump = "-- MySQL Dump\n";
+      sqlDump += `SET FOREIGN_KEY_CHECKS = 0;\n\n`;
+      
+      for (const table of tables) {
+        const rows = await db.query(`SELECT * FROM \`${table}\``);
+        if (rows.length === 0) continue;
+        
+        sqlDump += `\n-- Table: ${table}\n`;
+        sqlDump += `TRUNCATE TABLE \`${table}\`;\n`;
+        
+        for (const row of rows) {
+          const keys = Object.keys(row).map(k => `\`${k}\``).join(', ');
+          const values = Object.values(row).map(v => {
+            if (v === null) return 'NULL';
+            if (typeof v === 'boolean') return v ? 1 : 0;
+            if (typeof v === 'number') return v;
+            return `'${String(v).replace(/'/g, "''")}'`;
+          }).join(', ');
+          sqlDump += `INSERT INTO \`${table}\` (${keys}) VALUES (${values});\n`;
+        }
+      }
+      sqlDump += `\nSET FOREIGN_KEY_CHECKS = 1;\n`;
+      
+      return {
+        content: Buffer.from(sqlDump).toString("base64"),
+        filename: `pos_backup_${new Date().toISOString().split("T")[0]}.sql`
+      };
+    } else {
+      const dbPath = join(process.cwd(), "pos.db");
+      if (!existsSync(dbPath)) {
+        throw new Error("Base de données SQLite introuvable");
+      }
+      const buffer = readFileSync(dbPath);
+      return {
+        content: buffer.toString("base64"),
+        filename: `pos_backup_${new Date().toISOString().split("T")[0]}.db`
+      };
+    }
   });
 
 export const getTablesAction = createServerFn({ method: "POST" })
