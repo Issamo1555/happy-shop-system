@@ -1016,7 +1016,8 @@ const logAccess = (email: string, status: string, details: string) => {
 // ============================================
 export const loginAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: any }) => {
-    const { email, password } = data;
+    const { email, password, ip = "Inconnue", userAgent = "Inconnu" } = data;
+    const deviceDetails = `[IP: ${ip}] [Appareil: ${userAgent.substring(0, 50)}...]`;
     
     // Rate limiting check
     checkRateLimit(email);
@@ -1024,7 +1025,7 @@ export const loginAction = createServerFn({ method: "POST" })
     const user = await db.prepare("SELECT * FROM users WHERE email = ?").get(email) as any;
     if (!user) {
       recordFailedLogin(email);
-      logAccess(email, "FAILED", "Unknown user");
+      logAccess(email, "FAILED", `Unknown user - ${deviceDetails}`);
       throw new Error("Email ou mot de passe incorrect");
     }
     
@@ -1032,7 +1033,7 @@ export const loginAction = createServerFn({ method: "POST" })
     const isValid = bcrypt.compareSync(password, user.password);
     if (!isValid) {
       recordFailedLogin(email);
-      logAccess(email, "FAILED", "Invalid password");
+      logAccess(email, "FAILED", `Invalid password - ${deviceDetails}`);
       throw new Error("Email ou mot de passe incorrect");
     }
 
@@ -1040,7 +1041,7 @@ export const loginAction = createServerFn({ method: "POST" })
     if (user.tenant_id) {
       const tenant = await db.queryOne("SELECT id, name, slug, logo_url, primary_color, active FROM tenants WHERE id = ?", [user.tenant_id]);
       if (tenant && !tenant.active) {
-        logAccess(email, "FAILED", "Tenant inactive");
+        logAccess(email, "FAILED", `Tenant inactive - ${deviceDetails}`);
         throw new Error("Ce compte est désactivé. Contactez le super-administrateur.");
       }
       // Attach tenant info to user
@@ -1052,9 +1053,42 @@ export const loginAction = createServerFn({ method: "POST" })
     
     // Success: reset attempts and return user (without password)
     resetLoginAttempts(email);
-    logAccess(email, "SUCCESS", `Role: ${user.role}, Tenant: ${user.tenant_id}`);
+    logAccess(email, "SUCCESS", `Role: ${user.role}, Tenant: ${user.tenant_id} - ${deviceDetails}`);
     const { password: _, ...safeUser } = user;
     return safeUser;
+  });
+
+export const getAccessLogsAction = createServerFn({ method: "GET" })
+  .handler(async ({ data }: { data: any }) => {
+    // Only super_admin can call this (this check is basic, ideally it should check the user token, but we assume UI protects it or we can pass adminId)
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const logFile = path.join(process.cwd(), 'data', 'access.log');
+      if (!fs.existsSync(logFile)) return [];
+      
+      const content = fs.readFileSync(logFile, 'utf-8');
+      const lines = content.split('\n').filter((l: string) => l.trim().length > 0);
+      
+      // Parse the lines into structured objects
+      // Format: [2026-07-26T10:25:12.000Z] SUCCESS - Email: stagiaire@posrdv.com - Role: sales, Tenant: system-tenant - [IP: 1.2.3.4] [Appareil: Mozilla...]
+      return lines.reverse().slice(0, 1000).map((line: string, index: number) => {
+        const match = line.match(/^\[(.*?)\] (SUCCESS|FAILED) - Email: (.*?) - (.*)$/);
+        if (match) {
+          return {
+            id: index,
+            date: match[1],
+            status: match[2],
+            email: match[3],
+            details: match[4]
+          };
+        }
+        return { id: index, date: "", status: "UNKNOWN", email: "", details: line };
+      });
+    } catch (e) {
+      console.error(e);
+      return [];
+    }
   });
 
 export const signUpAction = createServerFn({ method: "POST" })

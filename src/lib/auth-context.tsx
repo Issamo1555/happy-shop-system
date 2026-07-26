@@ -54,7 +54,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = async (email: string, password: string) => {
     try {
-      const userData = await loginAction({ data: { email, password } });
+      let ip = "Inconnue";
+      try {
+        const ipRes = await fetch("https://api.ipify.org?format=json");
+        const ipData = await ipRes.json();
+        ip = ipData.ip;
+      } catch (e) {
+        console.error("Impossible de récupérer l'IP");
+      }
+      const userAgent = navigator.userAgent;
+
+      const userData = await loginAction({ data: { email, password, ip, userAgent } });
       setUser(userData);
       localStorage.setItem("pos_user", JSON.stringify(userData));
     } catch (err: any) {

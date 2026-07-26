@@ -25,6 +25,7 @@ import { Route as AppCatalogueRouteImport } from './routes/_app.catalogue'
 import { Route as AppCaisseRouteImport } from './routes/_app.caisse'
 import { Route as AppAgendaRouteImport } from './routes/_app.agenda'
 import { Route as AppAdminTenantsRouteImport } from './routes/_app.admin-tenants'
+import { Route as AppAccessLogsRouteImport } from './routes/_app.access-logs'
 
 const PricingRoute = PricingRouteImport.update({
   id: '/pricing',
@@ -105,11 +106,17 @@ const AppAdminTenantsRoute = AppAdminTenantsRouteImport.update({
   path: '/admin-tenants',
   getParentRoute: () => AppRoute,
 } as any)
+const AppAccessLogsRoute = AppAccessLogsRouteImport.update({
+  id: '/access-logs',
+  path: '/access-logs',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/pricing': typeof PricingRoute
+  '/access-logs': typeof AppAccessLogsRoute
   '/admin-tenants': typeof AppAdminTenantsRoute
   '/agenda': typeof AppAgendaRoute
   '/caisse': typeof AppCaisseRoute
@@ -127,6 +134,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/pricing': typeof PricingRoute
+  '/access-logs': typeof AppAccessLogsRoute
   '/admin-tenants': typeof AppAdminTenantsRoute
   '/agenda': typeof AppAgendaRoute
   '/caisse': typeof AppCaisseRoute
@@ -146,6 +154,7 @@ export interface FileRoutesById {
   '/_app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
   '/pricing': typeof PricingRoute
+  '/_app/access-logs': typeof AppAccessLogsRoute
   '/_app/admin-tenants': typeof AppAdminTenantsRoute
   '/_app/agenda': typeof AppAgendaRoute
   '/_app/caisse': typeof AppCaisseRoute
@@ -165,6 +174,7 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/pricing'
+    | '/access-logs'
     | '/admin-tenants'
     | '/agenda'
     | '/caisse'
@@ -182,6 +192,7 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/pricing'
+    | '/access-logs'
     | '/admin-tenants'
     | '/agenda'
     | '/caisse'
@@ -200,6 +211,7 @@ export interface FileRouteTypes {
     | '/_app'
     | '/login'
     | '/pricing'
+    | '/_app/access-logs'
     | '/_app/admin-tenants'
     | '/_app/agenda'
     | '/_app/caisse'
@@ -335,10 +347,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAdminTenantsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/access-logs': {
+      id: '/_app/access-logs'
+      path: '/access-logs'
+      fullPath: '/access-logs'
+      preLoaderRoute: typeof AppAccessLogsRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
 interface AppRouteChildren {
+  AppAccessLogsRoute: typeof AppAccessLogsRoute
   AppAdminTenantsRoute: typeof AppAdminTenantsRoute
   AppAgendaRoute: typeof AppAgendaRoute
   AppCaisseRoute: typeof AppCaisseRoute
@@ -354,6 +374,7 @@ interface AppRouteChildren {
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppAccessLogsRoute: AppAccessLogsRoute,
   AppAdminTenantsRoute: AppAdminTenantsRoute,
   AppAgendaRoute: AppAgendaRoute,
   AppCaisseRoute: AppCaisseRoute,

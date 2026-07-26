@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { 
   ShoppingBag, Users, Calendar, Receipt, LogOut, Package, HardDrive, 
   Database, User, Camera, Settings, LayoutDashboard, LifeBuoy, 
-  Building2, PhoneCall, Menu, FileText
+  Building2, PhoneCall, Menu, FileText, Shield
 } from "lucide-react";
 import { toast } from "sonner";
 import { downloadDatabaseAction } from "@/lib/actions";
@@ -26,6 +26,7 @@ const navItems = [
   { to: "/settings", label: "Paramètres", icon: Settings, adminOnly: true },
   { to: "/db-admin", label: "Base de données", icon: Database, superAdminOnly: true },
   { to: "/admin-tenants", label: "Centres (Tenants)", icon: Building2, superAdminOnly: true },
+  { to: "/access-logs", label: "Logs d'accès", icon: Shield, superAdminOnly: true },
   { to: "/crm", label: "Prospection", icon: PhoneCall, crmAccessOnly: true },
   { to: "/guide-stage", label: "Programme Stage", icon: FileText, crmAccessOnly: true },
 ] as const;
