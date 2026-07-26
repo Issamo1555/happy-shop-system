@@ -999,13 +999,11 @@ export const getTableDataAction = createServerFn({ method: "POST" })
 
 const logAccess = (email: string, status: string, details: string) => {
   try {
-    const fs = require('fs');
-    const path = require('path');
-    const logDir = path.join(process.cwd(), 'data');
-    if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
-    const logFile = path.join(logDir, 'access.log');
+    const logDir = join(process.cwd(), 'data');
+    if (!existsSync(logDir)) mkdirSync(logDir, { recursive: true });
+    const logFile = join(logDir, 'access.log');
     const logLine = `[${new Date().toISOString()}] ${status.toUpperCase()} - Email: ${email} - ${details}\n`;
-    fs.appendFileSync(logFile, logLine);
+    writeFileSync(logFile, logLine, { flag: 'a' });
   } catch (e) {
     console.error("Failed to write to access.log", e);
   }
@@ -1062,12 +1060,10 @@ export const getAccessLogsAction = createServerFn({ method: "GET" })
   .handler(async ({ data }: { data: any }) => {
     // Only super_admin can call this (this check is basic, ideally it should check the user token, but we assume UI protects it or we can pass adminId)
     try {
-      const fs = require('fs');
-      const path = require('path');
-      const logFile = path.join(process.cwd(), 'data', 'access.log');
-      if (!fs.existsSync(logFile)) return [];
+      const logFile = join(process.cwd(), 'data', 'access.log');
+      if (!existsSync(logFile)) return [];
       
-      const content = fs.readFileSync(logFile, 'utf-8');
+      const content = readFileSync(logFile, 'utf-8');
       const lines = content.split('\n').filter((l: string) => l.trim().length > 0);
       
       // Parse the lines into structured objects
