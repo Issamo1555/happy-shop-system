@@ -2,6 +2,8 @@ import { createFileRoute, Outlet, Navigate, useLocation } from "@tanstack/react-
 import { useAuth } from "@/lib/auth-context";
 import { AppSidebar } from "@/components/AppSidebar";
 import { CartProvider } from "@/lib/cart-context";
+import { useState } from "react";
+import { AlertTriangle, ShieldAlert, LogOut, X } from "lucide-react";
 
 export const Route = createFileRoute("/_app")({
   component: AppLayout,
@@ -19,8 +21,14 @@ const moduleRoutes: Record<string, string> = {
 };
 
 function AppLayout() {
-  const { isAuthenticated, loading, isStaff, user } = useAuth();
+  const { isAuthenticated, loading, isStaff, user, signOut } = useAuth();
   const { pathname } = useLocation();
+  const [hideBanner, setHideBanner] = useState(() => {
+    if (typeof window !== "undefined") {
+      return sessionStorage.getItem("hide_subscription_banner") === "true";
+    }
+    return false;
+  });
 
   if (loading) {
     return (
@@ -49,6 +57,63 @@ function AppLayout() {
     );
   }
 
+  // Calculate subscription status
+  const isSuperAdmin = user?.role === 'super_admin';
+  const hasSubscription = !!user?.subscription_end_date;
+  
+  const isExpired = (() => {
+    if (isSuperAdmin || !hasSubscription) return false;
+    const endDate = new Date(user.subscription_end_date);
+    return new Date() > endDate;
+  })();
+
+  const daysRemaining = (() => {
+    if (isSuperAdmin || !hasSubscription || isExpired) return null;
+    const endDate = new Date(user.subscription_end_date);
+    const diffTime = endDate.getTime() - Date.now();
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  })();
+
+  // Render lockout screen if expired
+  if (isExpired) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4">
+        <div className="max-w-md w-full bg-white rounded-2xl shadow-xl border border-red-100 p-8 text-center space-y-6">
+          <div className="mx-auto w-16 h-16 bg-red-50 rounded-full flex items-center justify-center text-red-500">
+            <ShieldAlert className="w-10 h-10 animate-bounce" />
+          </div>
+          <div className="space-y-2">
+            <h1 className="font-display text-2xl font-bold text-slate-800">Accès Suspendu</h1>
+            <p className="text-sm text-slate-500">
+              L'abonnement de votre centre (<strong>{user?.tenant_name || "Établissement"}</strong>) a expiré le{" "}
+              <span className="font-semibold text-red-600">
+                {new Date(user.subscription_end_date).toLocaleDateString("fr-FR")}
+              </span>.
+            </p>
+          </div>
+          <div className="bg-slate-50 p-4 rounded-xl text-xs text-slate-600 leading-relaxed text-left border">
+            Pour réactiver l'accès à vos fonctionnalités de caisse, d'agenda et de prospection, veuillez contacter le super-administrateur de la plateforme ou renouveler votre formule.
+          </div>
+          <div className="flex flex-col gap-2 pt-2">
+            <a 
+              href="mailto:contact@smartcodai.com" 
+              className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg shadow-sm transition-colors"
+            >
+              Contacter le support
+            </a>
+            <button 
+              onClick={() => signOut()}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+            >
+              <LogOut className="w-4 h-4" />
+              Se déconnecter
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Route protection for disabled modules
   const matchedRoute = Object.keys(moduleRoutes).find(route => pathname.startsWith(route));
   if (matchedRoute) {
@@ -58,17 +123,41 @@ function AppLayout() {
     }
   }
 
-
+  const handleCloseBanner = () => {
+    setHideBanner(true);
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem("hide_subscription_banner", "true");
+    }
+  };
 
   return (
     <CartProvider>
-      <div className="min-h-screen bg-background">
-        <AppSidebar />
-        <main className="lg:pl-64 flex flex-col min-h-screen transition-all duration-300">
-          <div className="flex-1 w-full max-w-[1400px] mx-auto px-4 lg:px-6 py-6">
-            <Outlet />
+      <div className="min-h-screen bg-background flex flex-col">
+        {daysRemaining !== null && daysRemaining <= 5 && !hideBanner && (
+          <div className="bg-amber-500 text-white text-xs sm:text-sm font-medium px-4 py-2.5 flex items-center justify-between shadow-md relative z-50 animate-fadeIn shrink-0">
+            <div className="flex items-center gap-2 mx-auto">
+              <AlertTriangle className="w-4 h-4 animate-pulse shrink-0" />
+              <span>
+                Attention : L'abonnement de votre centre expire dans <strong>{daysRemaining} jour(s)</strong> (le {new Date(user.subscription_end_date).toLocaleDateString("fr-FR")}). Veuillez régulariser votre situation.
+              </span>
+            </div>
+            <button 
+              onClick={handleCloseBanner}
+              className="text-white/80 hover:text-white p-1 hover:bg-white/10 rounded-full transition-colors absolute right-2 top-1/2 -translate-y-1/2"
+              title="Masquer l'alerte"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
-        </main>
+        )}
+        <div className="flex flex-1 relative">
+          <AppSidebar />
+          <main className="lg:pl-64 flex flex-col flex-1 min-h-screen transition-all duration-300">
+            <div className="flex-1 w-full max-w-[1400px] mx-auto px-4 lg:px-6 py-6">
+              <Outlet />
+            </div>
+          </main>
+        </div>
       </div>
     </CartProvider>
   );

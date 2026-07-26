@@ -1100,7 +1100,7 @@ export const loginAction = createServerFn({ method: "POST" })
 
     // Check if tenant is active
     if (user.tenant_id) {
-      const tenant = await db.queryOne("SELECT id, name, slug, logo_url, primary_color, active, enabled_modules FROM tenants WHERE id = ?", [user.tenant_id]);
+      const tenant = await db.queryOne("SELECT id, name, slug, logo_url, primary_color, active, enabled_modules, subscription_end_date FROM tenants WHERE id = ?", [user.tenant_id]);
       if (tenant && !tenant.active) {
         logAccess(email, "FAILED", `Tenant inactive - ${deviceDetails}`);
         throw new Error("Ce compte est désactivé. Contactez le super-administrateur.");
@@ -1111,8 +1111,10 @@ export const loginAction = createServerFn({ method: "POST" })
       user.tenant_logo = tenant?.logo_url || "";
       user.tenant_color = tenant?.primary_color || "#D4A574";
       user.enabled_modules = tenant?.enabled_modules ? JSON.parse(tenant.enabled_modules) : ["caisse", "catalogue", "clients", "agenda", "historique", "tickets", "crm"];
+      user.subscription_end_date = tenant?.subscription_end_date || null;
     } else {
       user.enabled_modules = ["caisse", "catalogue", "clients", "agenda", "historique", "tickets", "crm", "access-logs"];
+      user.subscription_end_date = null;
     }
     
     // Success: reset attempts and return user (without password)
@@ -1198,16 +1200,18 @@ export const validateSessionAction = createServerFn({ method: "POST" })
 
     // Attach tenant info
     if (user.tenant_id) {
-      const tenant = await db.queryOne("SELECT id, name, slug, logo_url, primary_color, active, enabled_modules FROM tenants WHERE id = ?", [user.tenant_id]);
+      const tenant = await db.queryOne("SELECT id, name, slug, logo_url, primary_color, active, enabled_modules, subscription_end_date FROM tenants WHERE id = ?", [user.tenant_id]);
       if (tenant) {
         user.tenant_name = tenant.name;
         user.tenant_slug = tenant.slug;
         user.tenant_logo = tenant.logo_url;
         user.tenant_color = tenant.primary_color;
         user.enabled_modules = tenant.enabled_modules ? JSON.parse(tenant.enabled_modules) : ["caisse", "catalogue", "clients", "agenda", "historique", "tickets", "crm"];
+        user.subscription_end_date = tenant.subscription_end_date || null;
       }
     } else {
       user.enabled_modules = ["caisse", "catalogue", "clients", "agenda", "historique", "tickets", "crm", "access-logs"];
+      user.subscription_end_date = null;
     }
 
     updateActiveUser(user);
