@@ -4,7 +4,8 @@ import {
   getTenantsAction, createTenantAction, updateTenantAction, 
   toggleTenantActiveAction, seedTenantDataAction, getTenantUsersAction, 
   deleteTenantUserAction, resetTenantUserPasswordAction, exportDatabaseAction, 
-  importDatabaseAction, updateTenantSubscriptionAction, clearPaymentProofAction
+  importDatabaseAction, updateTenantSubscriptionAction, clearPaymentProofAction,
+  updateTenantPublicProfileSuperAdminAction
 } from "@/lib/actions";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
@@ -14,7 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Building2, Plus, Search, Settings, Building, MapPin, DatabaseZap, Users, Trash2, Key, Check, X, Tag, AlertCircle, Shield } from "lucide-react";
+import { Building2, Plus, Search, Settings, Building, MapPin, DatabaseZap, Users, Trash2, Key, Check, X, Tag, AlertCircle, Shield, Globe, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -88,6 +89,10 @@ function AdminTenantsPage() {
   const [primaryColor, setPrimaryColor] = useState("#D4A574");
   const [inviteCode, setInviteCode] = useState("");
   const [active, setActive] = useState(true);
+  // Vitrine fields
+  const [specialty, setSpecialty] = useState("");
+  const [city, setCity] = useState("");
+  const [description, setDescription] = useState("");
 
   // Admin User (for creation only)
   const [adminEmail, setAdminEmail] = useState("");
@@ -254,6 +259,9 @@ function AdminTenantsPage() {
     setPrimaryColor(t.primary_color || "#D4A574");
     setInviteCode(t.invite_code || "");
     setActive(t.active);
+    setSpecialty((t as any).specialty || "");
+    setCity((t as any).city || "");
+    setDescription((t as any).description || "");
     setOpen(true);
   };
 
@@ -273,6 +281,15 @@ function AdminTenantsPage() {
             primary_color: primaryColor,
             invite_code: inviteCode,
             active
+          }
+        });
+        await updateTenantPublicProfileSuperAdminAction({
+          data: {
+            userId: user.id,
+            tenantId: editing.id,
+            specialty,
+            city,
+            description
           }
         });
         toast.success("Centre mis à jour");
@@ -393,6 +410,50 @@ function AdminTenantsPage() {
                   </div>
                 </div>
               </div>
+
+              {/* VITRINE SECTION */}
+              {editing && (
+                <div className="space-y-4 pt-4">
+                  <h3 className="text-sm font-semibold text-muted-foreground border-b pb-2 uppercase tracking-wider flex items-center gap-2">
+                    <Globe className="w-4 h-4" />
+                    Page Vitrine Publique
+                  </h3>
+                  <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 text-xs text-blue-700 font-medium">
+                    🌐 URL publique :{" "}
+                    <a
+                      href={`/centre/${editing.slug}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="underline font-bold"
+                    >
+                      /centre/{editing.slug}
+                    </a>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="t-specialty">Spécialité</Label>
+                      <Input id="t-specialty" value={specialty} onChange={e => setSpecialty(e.target.value)} placeholder="Ex: Dentisterie, Kinésithérapie" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="t-city">Ville</Label>
+                      <Input id="t-city" value={city} onChange={e => setCity(e.target.value)} placeholder="Ex: Marrakech, Casablanca" />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="t-desc">Description du centre</Label>
+                    <textarea
+                      id="t-desc"
+                      value={description}
+                      onChange={e => setDescription(e.target.value)}
+                      placeholder="Décrivez le centre en quelques phrases (max 500 caractères)..."
+                      maxLength={500}
+                      rows={4}
+                      className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                    <p className="text-[10px] text-muted-foreground text-right">{description.length}/500</p>
+                  </div>
+                </div>
+              )}
 
               {!editing && (
                 <div className="space-y-4 pt-4">
@@ -516,6 +577,16 @@ function AdminTenantsPage() {
                     <DatabaseZap className="w-4 h-4 mr-2" />
                     Tests
                   </Button>
+                  <a
+                    href={`/centre/${t.slug}`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <Button variant="outline" size="sm" className="text-sky-600 border-sky-200 hover:bg-sky-50">
+                      <Globe className="w-4 h-4 mr-2" />
+                      Page Vitrine ↗
+                    </Button>
+                  </a>
                   <Button variant="ghost" size="sm" onClick={() => handleOpenEdit(t)}>
                     <Settings className="w-4 h-4 mr-2" />
                     Configurer

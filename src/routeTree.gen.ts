@@ -13,6 +13,7 @@ import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as CentreSlugRouteImport } from './routes/centre.$slug'
 import { Route as AppTicketsRouteImport } from './routes/_app.tickets'
 import { Route as AppSettingsRouteImport } from './routes/_app.settings'
 import { Route as AppHistoriqueRouteImport } from './routes/_app.historique'
@@ -44,6 +45,11 @@ const AppRoute = AppRouteImport.update({
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CentreSlugRoute = CentreSlugRouteImport.update({
+  id: '/centre/$slug',
+  path: '/centre/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppTicketsRoute = AppTicketsRouteImport.update({
@@ -129,6 +135,7 @@ export interface FileRoutesByFullPath {
   '/historique': typeof AppHistoriqueRoute
   '/settings': typeof AppSettingsRoute
   '/tickets': typeof AppTicketsRoute
+  '/centre/$slug': typeof CentreSlugRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -147,6 +154,7 @@ export interface FileRoutesByTo {
   '/historique': typeof AppHistoriqueRoute
   '/settings': typeof AppSettingsRoute
   '/tickets': typeof AppTicketsRoute
+  '/centre/$slug': typeof CentreSlugRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -167,6 +175,7 @@ export interface FileRoutesById {
   '/_app/historique': typeof AppHistoriqueRoute
   '/_app/settings': typeof AppSettingsRoute
   '/_app/tickets': typeof AppTicketsRoute
+  '/centre/$slug': typeof CentreSlugRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -187,6 +196,7 @@ export interface FileRouteTypes {
     | '/historique'
     | '/settings'
     | '/tickets'
+    | '/centre/$slug'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -205,6 +215,7 @@ export interface FileRouteTypes {
     | '/historique'
     | '/settings'
     | '/tickets'
+    | '/centre/$slug'
   id:
     | '__root__'
     | '/'
@@ -224,6 +235,7 @@ export interface FileRouteTypes {
     | '/_app/historique'
     | '/_app/settings'
     | '/_app/tickets'
+    | '/centre/$slug'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -231,6 +243,7 @@ export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
   LoginRoute: typeof LoginRoute
   PricingRoute: typeof PricingRoute
+  CentreSlugRoute: typeof CentreSlugRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -261,6 +274,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/centre/$slug': {
+      id: '/centre/$slug'
+      path: '/centre/$slug'
+      fullPath: '/centre/$slug'
+      preLoaderRoute: typeof CentreSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_app/tickets': {
@@ -396,6 +416,7 @@ const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
   LoginRoute: LoginRoute,
   PricingRoute: PricingRoute,
+  CentreSlugRoute: CentreSlugRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

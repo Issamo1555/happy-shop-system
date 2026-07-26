@@ -1866,3 +1866,69 @@ export const clearPaymentProofAction = createServerFn({ method: "POST" })
     return { success: true };
   });
 
+export const getTenantPublicProfileAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: { slug: string } }) => {
+    const rows = await db.query(
+      `SELECT id, name, slug, logo_url, primary_color, active, subscription_status, subscription_end_date, specialty, city, description
+       FROM tenants WHERE slug = ?`,
+      [data.slug]
+    );
+
+    if (!rows || rows.length === 0) {
+      return null;
+    }
+
+    const t = rows[0];
+    const isExpired = t.subscription_status === 'expired' || 
+      (t.subscription_end_date && new Date(t.subscription_end_date) < new Date());
+
+    return {
+      id: t.id,
+      name: t.name,
+      slug: t.slug,
+      logo_url: t.logo_url,
+      color: t.primary_color,
+      specialty: t.specialty,
+      city: t.city,
+      description: t.description,
+      active: Boolean(t.active),
+      isExpired
+    };
+  });
+
+export const createPublicAppointmentRequestAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: { tenantId: string; name: string; phone: string; motif: string } }) => {
+    const { nanoid } = await import("nanoid");
+    const id = nanoid();
+    const now = new Date().toISOString();
+
+    await db.execute(
+      `INSERT INTO prospects (id, tenant_id, name, phone, status, source, notes, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 'nouveau', 'vitrine', ?, ?, ?)`,
+      [id, data.tenantId, data.name, data.phone, data.motif || "Demande de rendez-vous (site vitrine)", now, now]
+    );
+
+    return { success: true };
+  });
+
+export const updateTenantPublicProfileAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: { userId: string; specialty: string; city: string; description: string } }) => {
+    const user = await checkAdmin(data.userId);
+    await db.execute(
+      "UPDATE tenants SET specialty = ?, city = ?, description = ? WHERE id = ?",
+      [data.specialty, data.city, data.description, user.tenant_id]
+    );
+    return { success: true };
+  });
+
+export const updateTenantPublicProfileSuperAdminAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: { userId: string; tenantId: string; specialty: string; city: string; description: string } }) => {
+    await checkSuperAdmin(data.userId);
+    await db.execute(
+      "UPDATE tenants SET specialty = ?, city = ?, description = ? WHERE id = ?",
+      [data.specialty, data.city, data.description, data.tenantId]
+    );
+    return { success: true };
+  });
+
+

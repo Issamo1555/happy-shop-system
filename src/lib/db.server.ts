@@ -348,9 +348,13 @@ export const initServerDb = async () => {
         invite_code TEXT,
         active BOOLEAN NOT NULL DEFAULT 1,
         subscription_plan_id TEXT,
+        subscription_status TEXT DEFAULT 'active',
         subscription_end_date DATETIME,
         enabled_modules TEXT,
         payment_proof_url TEXT,
+        specialty TEXT,
+        city TEXT,
+        description TEXT,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
       CREATE TABLE IF NOT EXISTS pricing_offers (

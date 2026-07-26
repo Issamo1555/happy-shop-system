@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { getSettingsAction, updateSettingsAction, getTenantUsersAction, createTenantUserAction, updateUserRoleAction, deleteTenantUserAction, resetTenantUserPasswordAction } from "@/lib/actions";
+import { getSettingsAction, updateSettingsAction, getTenantUsersAction, createTenantUserAction, updateUserRoleAction, deleteTenantUserAction, resetTenantUserPasswordAction, updateTenantPublicProfileAction } from "@/lib/actions";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Settings, MapPin, Phone, Mail, Calendar, Percent, Save, Lock, Users, UserPlus, Trash2, KeyRound, Shield, ShoppingBag, PhoneCall, Pencil } from "lucide-react";
+import { Settings, MapPin, Phone, Mail, Calendar, Percent, Save, Lock, Users, UserPlus, Trash2, KeyRound, Shield, ShoppingBag, PhoneCall, Pencil, Globe, Copy, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_app/settings")({
@@ -56,6 +56,13 @@ function SettingsPage() {
   const [editRoleValue, setEditRoleValue] = useState("");
   const [resetPwTarget, setResetPwTarget] = useState<any>(null);
   const [resetPwValue, setResetPwValue] = useState("");
+
+  // Vitrine state
+  const [specialty, setSpecialty] = useState(user?.specialty || "");
+  const [city, setCity] = useState(user?.city || "");
+  const [vitDesc, setVitDesc] = useState(user?.description || "");
+  const [savingVitrine, setSavingVitrine] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
 
   const fetchSettings = async () => {
     setLoading(true);
@@ -188,11 +195,12 @@ function SettingsPage() {
       </div>
 
       <Tabs defaultValue="general" className="space-y-6" onValueChange={(v) => { if (v === "team") fetchTeam(); }}>
-        <TabsList className="grid grid-cols-4 w-full max-w-3xl">
+        <TabsList className="grid grid-cols-5 w-full max-w-3xl">
           <TabsTrigger value="general" className="gap-2"><MapPin className="w-4 h-4" /> Général</TabsTrigger>
           <TabsTrigger value="calendar" className="gap-2"><Calendar className="w-4 h-4" /> Google Calendar</TabsTrigger>
           <TabsTrigger value="business" className="gap-2"><Percent className="w-4 h-4" /> Règles Métier</TabsTrigger>
           <TabsTrigger value="team" className="gap-2"><Users className="w-4 h-4" /> Équipe</TabsTrigger>
+          <TabsTrigger value="vitrine" className="gap-2"><Globe className="w-4 h-4" /> Vitrine</TabsTrigger>
         </TabsList>
 
         {/* ============ GENERAL TAB ============ */}
@@ -409,6 +417,126 @@ function SettingsPage() {
                   </table>
                 </div>
               )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ============ VITRINE TAB ============ */}
+        <TabsContent value="vitrine" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Globe className="w-5 h-5 text-primary" />
+                Page Vitrine Publique du Centre
+              </CardTitle>
+              <CardDescription>
+                Configurez les informations visibles par vos clients sur votre page web publique de prise de RDV.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Public Link Box */}
+              <div className="bg-gradient-to-r from-primary/10 via-primary/5 to-transparent p-4 rounded-xl border border-primary/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold text-primary uppercase tracking-wider">Votre Lien Public Vitrine</p>
+                  <p className="text-sm font-mono text-foreground font-bold">
+                    {window.location.origin}/centre/{user?.tenant_slug || "votre-centre"}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const url = `${window.location.origin}/centre/${user?.tenant_slug || "votre-centre"}`;
+                      navigator.clipboard.writeText(url);
+                      setLinkCopied(true);
+                      toast.success("Lien copié dans le presse-papier !");
+                      setTimeout(() => setLinkCopied(false), 3000);
+                    }}
+                    className="gap-2"
+                  >
+                    {linkCopied ? <CheckCircle2 className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
+                    {linkCopied ? "Copié !" : "Copier le lien"}
+                  </Button>
+                  <a
+                    href={`/centre/${user?.tenant_slug || "votre-centre"}`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <Button type="button" size="sm" className="gap-2">
+                      Voir ma page ↗
+                    </Button>
+                  </a>
+                </div>
+              </div>
+
+              {/* Form */}
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (!user?.id) return;
+                  setSavingVitrine(true);
+                  try {
+                    await updateTenantPublicProfileAction({
+                      data: {
+                        userId: user.id,
+                        specialty,
+                        city,
+                        description: vitDesc
+                      }
+                    });
+                    toast.success("Informations de la vitrine enregistrées avec succès !");
+                  } catch (err: any) {
+                    toast.error(err.message || "Erreur de sauvegarde");
+                  } finally {
+                    setSavingVitrine(false);
+                  }
+                }}
+                className="space-y-4"
+              >
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="v-spec">Spécialité Principale</Label>
+                    <Input
+                      id="v-spec"
+                      value={specialty}
+                      onChange={(e) => setSpecialty(e.target.value)}
+                      placeholder="Ex : Dentisterie, Pédiatrie, Kinésithérapie..."
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="v-city">Ville</Label>
+                    <Input
+                      id="v-city"
+                      value={city}
+                      onChange={(e) => setCity(e.target.value)}
+                      placeholder="Ex : Marrakech, Casablanca, Rabat..."
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="v-desc">Présentation du Centre</Label>
+                  <textarea
+                    id="v-desc"
+                    value={vitDesc}
+                    onChange={(e) => setVitDesc(e.target.value)}
+                    placeholder="Présentez votre établissement, vos services et votre équipe en quelques lignes..."
+                    rows={4}
+                    maxLength={500}
+                    className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                  <p className="text-xs text-muted-foreground text-right">{vitDesc.length}/500 caractères</p>
+                </div>
+
+                <div className="flex justify-end pt-2">
+                  <Button type="submit" disabled={savingVitrine} className="gap-2">
+                    <Save className="w-4 h-4" />
+                    {savingVitrine ? "Enregistrement..." : "Enregistrer la Vitrine"}
+                  </Button>
+                </div>
+              </form>
             </CardContent>
           </Card>
         </TabsContent>
