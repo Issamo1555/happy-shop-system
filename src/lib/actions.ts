@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { db, closeDatabase, initDatabase } from "./db.server";
-import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } from "fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync, readdirSync } from "fs";
 import { join } from "path";
 import bcrypt from "bcryptjs";
 import { syncEventToGoogle, deleteEventFromGoogle, pullEventsFromGoogle } from "./google-calendar.server";
@@ -1833,17 +1833,25 @@ export const uploadPaymentProofAction = createServerFn({ method: "POST" })
       throw new Error("Non autorisé");
     }
 
-    const proofDir = join(process.cwd(), "public", "payment_proofs");
-    if (!existsSync(proofDir)) {
-      mkdirSync(proofDir, { recursive: true });
-    }
-
     const ext = data.filename.split('.').pop() || 'png';
     const cleanFilename = `${data.tenantId}_${Date.now()}.${ext}`;
-    const filePath = join(proofDir, cleanFilename);
-
     const buffer = Buffer.from(data.base64, "base64");
-    writeFileSync(filePath, buffer);
+
+    // Write to public folder (for local dev persistence)
+    const publicDir = join(process.cwd(), "public", "payment_proofs");
+    if (!existsSync(publicDir)) {
+      mkdirSync(publicDir, { recursive: true });
+    }
+    const publicPath = join(publicDir, cleanFilename);
+    writeFileSync(publicPath, buffer);
+
+    // Also write to dist/client folder (for production serving)
+    const distDir = join(process.cwd(), "dist", "client", "payment_proofs");
+    if (!existsSync(distDir)) {
+      mkdirSync(distDir, { recursive: true });
+    }
+    const distPath = join(distDir, cleanFilename);
+    writeFileSync(distPath, buffer);
 
     const webPath = `/payment_proofs/${cleanFilename}`;
     await db.execute("UPDATE tenants SET payment_proof_url = ? WHERE id = ?", [webPath, data.tenantId]);
@@ -1857,3 +1865,24 @@ export const clearPaymentProofAction = createServerFn({ method: "POST" })
     await db.execute("UPDATE tenants SET payment_proof_url = NULL WHERE id = ?", [data.tenantId]);
     return { success: true };
   });
+
+// Sync existing payment proofs to dist/client on startup
+try {
+  const publicDir = join(process.cwd(), "public", "payment_proofs");
+  const distDir = join(process.cwd(), "dist", "client", "payment_proofs");
+  if (existsSync(publicDir)) {
+    if (!existsSync(distDir)) {
+      mkdirSync(distDir, { recursive: true });
+    }
+    const files = readdirSync(publicDir);
+    for (const file of files) {
+      const src = join(publicDir, file);
+      const dest = join(distDir, file);
+      if (!existsSync(dest)) {
+        writeFileSync(dest, readFileSync(src));
+      }
+    }
+  }
+} catch (e) {
+  console.error("Failed to sync payment proofs", e);
+}
