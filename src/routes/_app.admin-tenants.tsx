@@ -4,7 +4,7 @@ import {
   getTenantsAction, createTenantAction, updateTenantAction, 
   toggleTenantActiveAction, seedTenantDataAction, getTenantUsersAction, 
   deleteTenantUserAction, resetTenantUserPasswordAction, exportDatabaseAction, 
-  importDatabaseAction, updateTenantSubscriptionAction 
+  importDatabaseAction, updateTenantSubscriptionAction, clearPaymentProofAction
 } from "@/lib/actions";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
@@ -36,6 +36,7 @@ interface Tenant {
   subscription_plan_id?: string | null;
   subscription_end_date?: string | null;
   enabled_modules?: string | null;
+  payment_proof_url?: string | null;
   users_count?: number;
   clients_count?: number;
   total_sales?: number;
@@ -469,7 +470,14 @@ function AdminTenantsPage() {
                       </div>
                     )}
                     <div>
-                      <div className="font-medium text-foreground">{t.name}</div>
+                      <div className="font-medium text-foreground flex items-center gap-2">
+                        {t.name}
+                        {t.payment_proof_url && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-300 animate-pulse">
+                            Reçu
+                          </span>
+                        )}
+                      </div>
                       <div className="text-[10px] text-muted-foreground">ID: {t.id}</div>
                     </div>
                   </div>
@@ -705,6 +713,34 @@ function AdminTenantsPage() {
                 ))}
               </div>
             </div>
+            {selectedTenantForModules?.payment_proof_url && (
+              <div className="space-y-4 pt-2">
+                <h3 className="text-sm font-semibold text-muted-foreground border-b pb-2 uppercase tracking-wider">Justificatif de Paiement Reçu</h3>
+                <div className="flex items-center justify-between p-3 rounded-lg border bg-amber-50 border-amber-200">
+                  <div className="text-xs">
+                    <a href={selectedTenantForModules.payment_proof_url} target="_blank" rel="noreferrer" className="text-amber-800 hover:underline font-semibold flex items-center gap-1">
+                      📄 Voir la preuve de virement
+                    </a>
+                  </div>
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    size="sm" 
+                    className="h-8 text-xs text-red-600 border-red-200 hover:bg-red-50"
+                    onClick={async () => {
+                      if (confirm("Voulez-vous rejeter et effacer ce justificatif ?")) {
+                        await clearPaymentProofAction({ data: { tenantId: selectedTenantForModules.id, userId: user.id } });
+                        toast.success("Justificatif effacé");
+                        setModulesOpen(false);
+                        fetchTenants();
+                      }
+                    }}
+                  >
+                    Effacer / Rejeter
+                  </Button>
+                </div>
+              </div>
+            )}
 
             <DialogFooter className="pt-4 border-t">
               <Button type="button" variant="outline" onClick={() => setModulesOpen(false)} disabled={savingModules}>Annuler</Button>

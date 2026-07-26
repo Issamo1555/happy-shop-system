@@ -1100,7 +1100,7 @@ export const loginAction = createServerFn({ method: "POST" })
 
     // Check if tenant is active
     if (user.tenant_id) {
-      const tenant = await db.queryOne("SELECT id, name, slug, logo_url, primary_color, active, enabled_modules, subscription_end_date FROM tenants WHERE id = ?", [user.tenant_id]);
+      const tenant = await db.queryOne("SELECT id, name, slug, logo_url, primary_color, active, enabled_modules, subscription_end_date, payment_proof_url FROM tenants WHERE id = ?", [user.tenant_id]);
       if (tenant && !tenant.active) {
         logAccess(email, "FAILED", `Tenant inactive - ${deviceDetails}`);
         throw new Error("Ce compte est désactivé. Contactez le super-administrateur.");
@@ -1112,9 +1112,11 @@ export const loginAction = createServerFn({ method: "POST" })
       user.tenant_color = tenant?.primary_color || "#D4A574";
       user.enabled_modules = tenant?.enabled_modules ? JSON.parse(tenant.enabled_modules) : ["caisse", "catalogue", "clients", "agenda", "historique", "tickets", "crm"];
       user.subscription_end_date = tenant?.subscription_end_date || null;
+      user.payment_proof_url = tenant?.payment_proof_url || null;
     } else {
       user.enabled_modules = ["caisse", "catalogue", "clients", "agenda", "historique", "tickets", "crm", "access-logs"];
       user.subscription_end_date = null;
+      user.payment_proof_url = null;
     }
     
     // Success: reset attempts and return user (without password)
@@ -1200,7 +1202,7 @@ export const validateSessionAction = createServerFn({ method: "POST" })
 
     // Attach tenant info
     if (user.tenant_id) {
-      const tenant = await db.queryOne("SELECT id, name, slug, logo_url, primary_color, active, enabled_modules, subscription_end_date FROM tenants WHERE id = ?", [user.tenant_id]);
+      const tenant = await db.queryOne("SELECT id, name, slug, logo_url, primary_color, active, enabled_modules, subscription_end_date, payment_proof_url FROM tenants WHERE id = ?", [user.tenant_id]);
       if (tenant) {
         user.tenant_name = tenant.name;
         user.tenant_slug = tenant.slug;
@@ -1208,10 +1210,12 @@ export const validateSessionAction = createServerFn({ method: "POST" })
         user.tenant_color = tenant.primary_color;
         user.enabled_modules = tenant.enabled_modules ? JSON.parse(tenant.enabled_modules) : ["caisse", "catalogue", "clients", "agenda", "historique", "tickets", "crm"];
         user.subscription_end_date = tenant.subscription_end_date || null;
+        user.payment_proof_url = tenant.payment_proof_url || null;
       }
     } else {
       user.enabled_modules = ["caisse", "catalogue", "clients", "agenda", "historique", "tickets", "crm", "access-logs"];
       user.subscription_end_date = null;
+      user.payment_proof_url = null;
     }
 
     updateActiveUser(user);
@@ -1820,4 +1824,36 @@ export const importDatabaseAction = createServerFn({ method: "POST" })
       initDatabase();
       throw new Error("Échec de l'importation : " + err.message);
     }
+  });
+
+export const uploadPaymentProofAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: { tenantId: string, base64: string, filename: string, userId: string } }) => {
+    const user = await db.prepare("SELECT id, role, tenant_id FROM users WHERE id = ?").get(data.userId) as any;
+    if (!user || (user.tenant_id !== data.tenantId && user.role !== 'super_admin')) {
+      throw new Error("Non autorisé");
+    }
+
+    const proofDir = join(process.cwd(), "public", "payment_proofs");
+    if (!existsSync(proofDir)) {
+      mkdirSync(proofDir, { recursive: true });
+    }
+
+    const ext = data.filename.split('.').pop() || 'png';
+    const cleanFilename = `${data.tenantId}_${Date.now()}.${ext}`;
+    const filePath = join(proofDir, cleanFilename);
+
+    const buffer = Buffer.from(data.base64, "base64");
+    writeFileSync(filePath, buffer);
+
+    const webPath = `/payment_proofs/${cleanFilename}`;
+    await db.execute("UPDATE tenants SET payment_proof_url = ? WHERE id = ?", [webPath, data.tenantId]);
+
+    return { success: true, url: webPath };
+  });
+
+export const clearPaymentProofAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: { tenantId: string, userId: string } }) => {
+    await checkSuperAdmin(data.userId);
+    await db.execute("UPDATE tenants SET payment_proof_url = NULL WHERE id = ?", [data.tenantId]);
+    return { success: true };
   });

@@ -3,7 +3,9 @@ import { useAuth } from "@/lib/auth-context";
 import { AppSidebar } from "@/components/AppSidebar";
 import { CartProvider } from "@/lib/cart-context";
 import { useState } from "react";
-import { AlertTriangle, ShieldAlert, LogOut, X } from "lucide-react";
+import { AlertTriangle, ShieldAlert, LogOut, X, Upload, CheckCircle2 } from "lucide-react";
+import { uploadPaymentProofAction } from "@/lib/actions";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/_app")({
   component: AppLayout,
@@ -29,6 +31,37 @@ function AppLayout() {
     }
     return false;
   });
+
+  const [uploading, setUploading] = useState(false);
+  const [proofUrl, setProofUrl] = useState(user?.payment_proof_url || null);
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    try {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const base64 = (reader.result as string).split(',')[1];
+        const res = await uploadPaymentProofAction({
+          data: {
+            tenantId: user.tenant_id,
+            base64,
+            filename: file.name,
+            userId: user.id
+          }
+        });
+        setProofUrl(res.url);
+        toast.success("Justificatif de paiement envoyé !");
+      };
+      reader.readAsDataURL(file);
+    } catch (err: any) {
+      toast.error(err.message || "Erreur lors du téléversement");
+    } finally {
+      setUploading(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -77,7 +110,7 @@ function AppLayout() {
   // Render lockout screen if expired
   if (isExpired) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4">
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4 py-8">
         <div className="max-w-md w-full bg-white rounded-2xl shadow-xl border border-red-100 p-8 text-center space-y-6">
           <div className="mx-auto w-16 h-16 bg-red-50 rounded-full flex items-center justify-center text-red-500">
             <ShieldAlert className="w-10 h-10 animate-bounce" />
@@ -94,6 +127,55 @@ function AppLayout() {
           <div className="bg-slate-50 p-4 rounded-xl text-xs text-slate-600 leading-relaxed text-left border">
             Pour réactiver l'accès à vos fonctionnalités de caisse, d'agenda et de prospection, veuillez contacter le super-administrateur de la plateforme ou renouveler votre formule.
           </div>
+
+          {/* UPLOAD FORM */}
+          <div className="border border-dashed border-slate-300 rounded-xl p-6 bg-slate-50/50 space-y-4">
+            {proofUrl ? (
+              <div className="space-y-3">
+                <div className="flex items-center justify-center gap-2 text-green-600 font-medium text-sm">
+                  <CheckCircle2 className="w-5 h-5 shrink-0" />
+                  <span>Justificatif de paiement envoyé !</span>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Le super-administrateur a été notifié et procède à la validation de votre accès.
+                </p>
+                <div className="text-xs">
+                  <a href={proofUrl} target="_blank" rel="noreferrer" className="text-primary hover:underline font-medium">
+                    Voir le document envoyé
+                  </a>
+                </div>
+                <div className="pt-2 border-t text-[10px] text-muted-foreground">
+                  Vous pouvez charger un nouveau fichier si nécessaire :
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-1">
+                <h3 className="text-sm font-semibold text-slate-700">Envoyer une preuve de virement</h3>
+                <p className="text-xs text-slate-400">
+                  Déposez votre capture d'écran de paiement pour accélérer la réactivation.
+                </p>
+              </div>
+            )}
+            
+            <div className="flex items-center justify-center">
+              <label 
+                htmlFor="lockout-proof-upload"
+                className={`inline-flex items-center justify-center gap-2 rounded-lg text-xs font-semibold bg-white border border-slate-300 hover:bg-slate-50 h-9 px-4 cursor-pointer transition-colors shadow-sm ${uploading ? 'opacity-50 pointer-events-none' : ''}`}
+              >
+                <Upload className="w-3.5 h-3.5" />
+                {uploading ? "Envoi..." : proofUrl ? "Remplacer le justificatif" : "Choisir un fichier"}
+              </label>
+              <input 
+                id="lockout-proof-upload"
+                type="file"
+                accept="image/*,application/pdf"
+                className="hidden"
+                onChange={handleFileChange}
+                disabled={uploading}
+              />
+            </div>
+          </div>
+
           <div className="flex flex-col gap-2 pt-2">
             <a 
               href="mailto:contact@smartcodai.com" 

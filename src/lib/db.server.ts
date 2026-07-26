@@ -185,6 +185,7 @@ export const initServerDb = async () => {
       subscription_plan_id VARCHAR(50),
       subscription_end_date DATETIME,
       enabled_modules TEXT,
+      payment_proof_url TEXT,
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
     )`,
     `CREATE TABLE IF NOT EXISTS pricing_offers (
@@ -348,6 +349,7 @@ export const initServerDb = async () => {
         subscription_plan_id TEXT,
         subscription_end_date DATETIME,
         enabled_modules TEXT,
+        payment_proof_url TEXT,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
       CREATE TABLE IF NOT EXISTS pricing_offers (
