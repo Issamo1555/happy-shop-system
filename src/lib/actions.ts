@@ -1365,13 +1365,19 @@ export const uploadTicketImageAction = createServerFn({ method: "POST" })
     const extension = filename.split('.').pop() || 'png';
     const newFilename = `ticket_${userId}_${Date.now()}.${extension}`;
     const dirPath = join(process.cwd(), "public", "uploads", "tickets");
-    
     if (!existsSync(dirPath)) {
       mkdirSync(dirPath, { recursive: true });
     }
-    
     const filePath = join(dirPath, newFilename);
     writeFileSync(filePath, buffer);
+    
+    // Also write to data folder (persisted Docker volume in prod)
+    const dataDir = join(process.cwd(), "data", "uploads", "tickets");
+    if (!existsSync(dataDir)) {
+      try { mkdirSync(dataDir, { recursive: true }); } catch(e) {}
+    }
+    const dataPath = join(dataDir, newFilename);
+    try { writeFileSync(dataPath, buffer); } catch(e) {}
     
     const publicUrl = `/uploads/tickets/${newFilename}`;
     return { success: true, url: publicUrl };
@@ -1837,7 +1843,7 @@ export const uploadPaymentProofAction = createServerFn({ method: "POST" })
     const cleanFilename = `${data.tenantId}_${Date.now()}.${ext}`;
     const buffer = Buffer.from(data.base64, "base64");
 
-    // Write to public folder (for local dev persistence)
+    // Write to public folder (for local dev persistence in Vite)
     const publicDir = join(process.cwd(), "public", "payment_proofs");
     if (!existsSync(publicDir)) {
       mkdirSync(publicDir, { recursive: true });
@@ -1845,13 +1851,13 @@ export const uploadPaymentProofAction = createServerFn({ method: "POST" })
     const publicPath = join(publicDir, cleanFilename);
     writeFileSync(publicPath, buffer);
 
-    // Also write to dist/client folder (for production serving)
-    const distDir = join(process.cwd(), "dist", "client", "payment_proofs");
-    if (!existsSync(distDir)) {
-      mkdirSync(distDir, { recursive: true });
+    // Also write to data folder (persisted Docker volume in prod)
+    const dataDir = join(process.cwd(), "data", "payment_proofs");
+    if (!existsSync(dataDir)) {
+      try { mkdirSync(dataDir, { recursive: true }); } catch(e) {}
     }
-    const distPath = join(distDir, cleanFilename);
-    writeFileSync(distPath, buffer);
+    const dataPath = join(dataDir, cleanFilename);
+    try { writeFileSync(dataPath, buffer); } catch(e) {}
 
     const webPath = `/payment_proofs/${cleanFilename}`;
     await db.execute("UPDATE tenants SET payment_proof_url = ? WHERE id = ?", [webPath, data.tenantId]);

@@ -195,7 +195,7 @@ function SettingsPage() {
       </div>
 
       <Tabs defaultValue="general" className="space-y-6" onValueChange={(v) => { if (v === "team") fetchTeam(); }}>
-        <TabsList className="grid grid-cols-5 w-full max-w-3xl">
+        <TabsList className="flex flex-wrap md:grid md:grid-cols-5 w-full max-w-3xl h-auto">
           <TabsTrigger value="general" className="gap-2"><MapPin className="w-4 h-4" /> Général</TabsTrigger>
           <TabsTrigger value="calendar" className="gap-2"><Calendar className="w-4 h-4" /> Google Calendar</TabsTrigger>
           <TabsTrigger value="business" className="gap-2"><Percent className="w-4 h-4" /> Règles Métier</TabsTrigger>

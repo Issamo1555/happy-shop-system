@@ -44,9 +44,27 @@ console.log('🚀 TanStack Start server loaded');
 // Try to serve static files from dist/client
 function tryServeStatic(req, res) {
   const url = new URL(req.url, `http://localhost:${PORT}`);
-  const clientDir = join(__dirname, 'dist', 'client');
   
-  // Try to serve from dist/client
+  // 1. Try to serve from persisted data volume (for uploads/payment_proofs)
+  if (url.pathname.startsWith('/uploads/') || url.pathname.startsWith('/payment_proofs/')) {
+    const dataPath = join(__dirname, 'data', url.pathname);
+    if (existsSync(dataPath)) {
+      try {
+        const stat = readFileSync(dataPath);
+        const ext = extname(dataPath);
+        const mimeType = MIME_TYPES[ext] || 'application/octet-stream';
+        res.writeHead(200, {
+          'Content-Type': mimeType,
+          'Cache-Control': 'public, max-age=31536000, immutable',
+        });
+        res.end(stat);
+        return true;
+      } catch (e) {}
+    }
+  }
+
+  // 2. Try to serve from dist/client
+  const clientDir = join(__dirname, 'dist', 'client');
   let filePath = join(clientDir, url.pathname);
   
   if (!existsSync(filePath)) {
