@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useAuth } from '@/lib/auth-context'
 import { Navigate } from '@tanstack/react-router'
-import { useQuery } from '@tanstack/react-query'
+import { useState, useEffect } from 'react'
 import { getAccessLogsAction } from '@/lib/actions'
 import { Shield, Clock, Mail, MonitorSmartphone, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -20,13 +20,25 @@ function AccessLogsPage() {
     return <Navigate to="/dashboard" />
   }
 
-  const { data: logs, isLoading } = useQuery({
-    queryKey: ['access-logs'],
-    queryFn: async () => {
-      return await getAccessLogsAction({ data: {} })
-    },
-    refetchInterval: 10000 // auto refresh every 10s
-  })
+  const [logs, setLogs] = useState<any[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    const fetchLogs = async () => {
+      try {
+        const data = await getAccessLogsAction({ data: {} })
+        setLogs(data)
+      } catch (e) {
+        console.error(e)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchLogs()
+    const interval = setInterval(fetchLogs, 10000)
+    return () => clearInterval(interval)
+  }, [])
 
   const extractIpAndDevice = (details: string) => {
     const ipMatch = details.match(/\[IP: (.*?)\]/);
