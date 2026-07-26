@@ -997,6 +997,19 @@ export const getTableDataAction = createServerFn({ method: "POST" })
   });
 
 
+const logAccess = (email: string, status: string, details: string) => {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const logDir = path.join(process.cwd(), 'data');
+    if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
+    const logFile = path.join(logDir, 'access.log');
+    const logLine = `[${new Date().toISOString()}] ${status.toUpperCase()} - Email: ${email} - ${details}\n`;
+    fs.appendFileSync(logFile, logLine);
+  } catch (e) {
+    console.error("Failed to write to access.log", e);
+  }
+};
 
 // ============================================
 // AUTH (with bcrypt + rate limiting + tenant)
@@ -1011,6 +1024,7 @@ export const loginAction = createServerFn({ method: "POST" })
     const user = await db.prepare("SELECT * FROM users WHERE email = ?").get(email) as any;
     if (!user) {
       recordFailedLogin(email);
+      logAccess(email, "FAILED", "Unknown user");
       throw new Error("Email ou mot de passe incorrect");
     }
     
@@ -1018,6 +1032,7 @@ export const loginAction = createServerFn({ method: "POST" })
     const isValid = bcrypt.compareSync(password, user.password);
     if (!isValid) {
       recordFailedLogin(email);
+      logAccess(email, "FAILED", "Invalid password");
       throw new Error("Email ou mot de passe incorrect");
     }
 
@@ -1025,6 +1040,7 @@ export const loginAction = createServerFn({ method: "POST" })
     if (user.tenant_id) {
       const tenant = await db.queryOne("SELECT id, name, slug, logo_url, primary_color, active FROM tenants WHERE id = ?", [user.tenant_id]);
       if (tenant && !tenant.active) {
+        logAccess(email, "FAILED", "Tenant inactive");
         throw new Error("Ce compte est désactivé. Contactez le super-administrateur.");
       }
       // Attach tenant info to user
@@ -1036,6 +1052,7 @@ export const loginAction = createServerFn({ method: "POST" })
     
     // Success: reset attempts and return user (without password)
     resetLoginAttempts(email);
+    logAccess(email, "SUCCESS", `Role: ${user.role}, Tenant: ${user.tenant_id}`);
     const { password: _, ...safeUser } = user;
     return safeUser;
   });
