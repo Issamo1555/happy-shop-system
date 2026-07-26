@@ -1869,7 +1869,7 @@ export const clearPaymentProofAction = createServerFn({ method: "POST" })
 export const getTenantPublicProfileAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: { slug: string } }) => {
     const rows = await db.query(
-      `SELECT id, name, slug, logo_url, primary_color, active, subscription_status, subscription_end_date, specialty, city, description
+      `SELECT id, name, slug, logo_url, primary_color, active, subscription_end_date, specialty, city, description
        FROM tenants WHERE slug = ?`,
       [data.slug]
     );
@@ -1879,8 +1879,15 @@ export const getTenantPublicProfileAction = createServerFn({ method: "POST" })
     }
 
     const t = rows[0];
-    const isExpired = t.subscription_status === 'expired' || 
-      (t.subscription_end_date && new Date(t.subscription_end_date) < new Date());
+    // A centre is expired only if subscription_end_date is past AND it was set
+    const isExpired = Boolean(
+      t.subscription_end_date && new Date(t.subscription_end_date) < new Date()
+    );
+
+    // Don't show if centre is inactive
+    if (!t.active && !t.active === null) {
+      return null;
+    }
 
     return {
       id: t.id,
@@ -1895,6 +1902,7 @@ export const getTenantPublicProfileAction = createServerFn({ method: "POST" })
       isExpired
     };
   });
+
 
 export const createPublicAppointmentRequestAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: { tenantId: string; name: string; phone: string; motif: string } }) => {
