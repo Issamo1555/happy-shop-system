@@ -108,6 +108,30 @@ function CentreVitrinePage() {
             )}
           </div>
 
+          
+          <div className="flex flex-wrap justify-center gap-4 mb-6">
+            {profile.facebook_url && (
+              <a href={profile.facebook_url} target="_blank" rel="noreferrer" className="w-10 h-10 rounded-full bg-white/20 backdrop-blur flex items-center justify-center text-white hover:bg-white/30 transition-colors">
+                <Facebook className="w-5 h-5" />
+              </a>
+            )}
+            {profile.instagram_url && (
+              <a href={profile.instagram_url} target="_blank" rel="noreferrer" className="w-10 h-10 rounded-full bg-white/20 backdrop-blur flex items-center justify-center text-white hover:bg-white/30 transition-colors">
+                <Instagram className="w-5 h-5" />
+              </a>
+            )}
+            {profile.whatsapp_number && (
+              <a href={`https://wa.me/${profile.whatsapp_number.replace(/[^0-9]/g, '')}`} target="_blank" rel="noreferrer" className="w-10 h-10 rounded-full bg-white/20 backdrop-blur flex items-center justify-center text-white hover:bg-white/30 transition-colors">
+                <Phone className="w-5 h-5" />
+              </a>
+            )}
+            {profile.google_maps_url && (
+              <a href={profile.google_maps_url} target="_blank" rel="noreferrer" className="w-10 h-10 rounded-full bg-white/20 backdrop-blur flex items-center justify-center text-white hover:bg-white/30 transition-colors">
+                <MapPin className="w-5 h-5" />
+              </a>
+            )}
+          </div>
+
           {profile.description && (
             <p className="text-white/85 text-lg max-w-xl leading-relaxed">
               {profile.description}
@@ -139,6 +163,47 @@ function CentreVitrinePage() {
 
       {/* MAIN CONTENT */}
       <main className="max-w-3xl mx-auto px-6 py-14 space-y-10">
+
+        {profile.services && profile.services.length > 0 && (
+          <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
+            <h2 className="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+              <ChevronRight className="w-5 h-5" style={{ color: primaryColor }} />
+              Prestations et Tarifs
+            </h2>
+            <div className="space-y-3">
+              {profile.services.map((svc: any, idx: number) => (
+                <div key={idx} className="flex justify-between items-center py-3 border-b border-gray-50 last:border-0">
+                  <div>
+                    <h3 className="font-medium text-gray-800">{svc.name}</h3>
+                    {svc.duration && <p className="text-xs text-gray-400 mt-1">{svc.duration}</p>}
+                  </div>
+                  {svc.price && (
+                    <div className="font-bold text-gray-900 bg-gray-50 px-3 py-1 rounded-md">
+                      {svc.price}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {profile.gallery && profile.gallery.length > 0 && (
+          <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
+            <h2 className="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+              <ImageIcon className="w-5 h-5" style={{ color: primaryColor }} />
+              Galerie Photos
+            </h2>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              {profile.gallery.map((img: string, idx: number) => (
+                <a key={idx} href={img} target="_blank" rel="noreferrer" className="block aspect-square rounded-xl overflow-hidden group">
+                  <img src={img} alt="Galerie" className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110" />
+                </a>
+              ))}
+            </div>
+          </section>
+        )}
+
         {profile.description && (
           <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
             <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">

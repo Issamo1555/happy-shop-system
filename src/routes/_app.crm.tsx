@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
-import { Phone, Mail, MapPin, Building2, UserPlus, PhoneCall, MessageSquareText, Search, Filter, Copy, ArrowDown, AlertCircle, Calendar, Users, Shield, Sparkles, Upload, FileSpreadsheet, Check, RefreshCw } from "lucide-react";
+import { Phone, Mail, MapPin, Building2, UserPlus, PhoneCall, MessageSquareText, Search, Filter, Copy, ArrowDown, AlertCircle, Calendar, Users, Shield, Sparkles, Upload, FileSpreadsheet, Check, RefreshCw, Globe } from "lucide-react";
 import { toast } from "sonner";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -1438,7 +1438,14 @@ function CRMPage() {
                       {getInitials(p.name)}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="font-bold text-slate-900 truncate">{p.name}</div>
+                      <div className="flex items-center gap-2">
+                        <div className="font-bold text-slate-900 truncate">{p.name}</div>
+                        {p.source === 'vitrine' && (
+                          <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-[10px] px-1.5 py-0 flex items-center">
+                            <Globe className="w-3 h-3 mr-1" /> Web
+                          </Badge>
+                        )}
+                      </div>
                       <div className="text-xs text-muted-foreground flex items-center gap-1.5 mt-1">
                         <span className="flex items-center gap-0.5"><Building2 className="w-3 h-3 shrink-0" /> {p.specialty}</span>
                         <span>•</span>

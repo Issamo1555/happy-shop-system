@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { getSettingsAction, updateSettingsAction, getTenantUsersAction, createTenantUserAction, updateUserRoleAction, deleteTenantUserAction, resetTenantUserPasswordAction, updateTenantPublicProfileAction } from "@/lib/actions";
+import { getSettingsAction, updateSettingsAction, getTenantUsersAction, createTenantUserAction, updateUserRoleAction, deleteTenantUserAction, resetTenantUserPasswordAction, updateTenantPublicProfileAction, getTenantPublicProfileAction, uploadGalleryImageAction, deleteGalleryImageAction } from "@/lib/actions";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Settings, MapPin, Phone, Mail, Calendar, Percent, Save, Lock, Users, UserPlus, Trash2, KeyRound, Shield, ShoppingBag, PhoneCall, Pencil, Globe, Copy, CheckCircle2 } from "lucide-react";
+import { Settings, MapPin, Phone, Mail, Calendar, Percent, Save, Lock, Users, UserPlus, Trash2, KeyRound, Shield, ShoppingBag, PhoneCall, Pencil, Globe, Copy, CheckCircle2, Facebook, Instagram, Image as ImageIcon, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_app/settings")({
@@ -61,8 +61,77 @@ function SettingsPage() {
   const [specialty, setSpecialty] = useState(user?.specialty || "");
   const [city, setCity] = useState(user?.city || "");
   const [vitDesc, setVitDesc] = useState(user?.description || "");
+  const [facebookUrl, setFacebookUrl] = useState("");
+  const [instagramUrl, setInstagramUrl] = useState("");
+  const [whatsappNumber, setWhatsappNumber] = useState("");
+  const [googleMapsUrl, setGoogleMapsUrl] = useState("");
+  const [vitrineServices, setVitrineServices] = useState<{name:string, price:string, duration:string}[]>([]);
+  const [galleryImages, setGalleryImages] = useState<string[]>([]);
   const [savingVitrine, setSavingVitrine] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
+
+  const fetchVitrineProfile = async () => {
+    if (!user?.tenant_slug) return;
+    try {
+      const data = await getTenantPublicProfileAction({ data: { slug: user.tenant_slug } }) as any;
+      if (data) {
+        setSpecialty(data.specialty || "");
+        setCity(data.city || "");
+        setVitDesc(data.description || "");
+        setFacebookUrl(data.facebook_url || "");
+        setInstagramUrl(data.instagram_url || "");
+        setWhatsappNumber(data.whatsapp_number || "");
+        setGoogleMapsUrl(data.google_maps_url || "");
+        setVitrineServices(data.services || []);
+        setGalleryImages(data.gallery || []);
+      }
+    } catch(e) {
+      console.error(e);
+    }
+  };
+
+
+  const handleUploadGalleryImage = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user?.id) return;
+    setUploadingImage(true);
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const base64 = event.target?.result as string;
+        const res = await uploadGalleryImageAction({ data: { userId: user.id, base64, filename: file.name } }) as any;
+        setGalleryImages(res.gallery);
+        toast.success("Image ajoutée à la galerie");
+      } catch(err: any) {
+        toast.error(err.message || "Erreur lors de l'upload");
+      } finally {
+        setUploadingImage(false);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleDeleteGalleryImage = async (url: string) => {
+    if (!user?.id) return;
+    try {
+      const res = await deleteGalleryImageAction({ data: { userId: user.id, url } }) as any;
+      setGalleryImages(res.gallery);
+      toast.success("Image supprimée");
+    } catch(err: any) {
+      toast.error(err.message || "Erreur de suppression");
+    }
+  };
+
+  const addService = () => setVitrineServices([...vitrineServices, {name: "", price: "", duration: ""}]);
+  const updateService = (index: number, key: keyof typeof vitrineServices[0], value: string) => {
+    const arr = [...vitrineServices];
+    arr[index][key] = value;
+    setVitrineServices(arr);
+  };
+  const removeService = (index: number) => {
+    setVitrineServices(vitrineServices.filter((_, i) => i !== index));
+  };
 
   const fetchSettings = async () => {
     setLoading(true);
@@ -98,7 +167,9 @@ function SettingsPage() {
 
   useEffect(() => {
     fetchSettings();
-  }, [user?.tenant_id]);
+    fetchTeam();
+    fetchVitrineProfile();
+  }, [user?.id]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -483,7 +554,13 @@ function SettingsPage() {
                         userId: user.id,
                         specialty,
                         city,
-                        description: vitDesc
+                        description: vitDesc,
+                        facebook_url: facebookUrl,
+                        instagram_url: instagramUrl,
+                        whatsapp_number: whatsappNumber,
+                        google_maps_url: googleMapsUrl,
+                        vitrine_services: JSON.stringify(vitrineServices),
+                        gallery_images: JSON.stringify(galleryImages)
                       }
                     });
                     toast.success("Informations de la vitrine enregistrées avec succès !");
@@ -528,6 +605,81 @@ function SettingsPage() {
                     className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
                   />
                   <p className="text-xs text-muted-foreground text-right">{vitDesc.length}/500 caractères</p>
+                </div>
+
+                
+                {/* Réseaux Sociaux */}
+                <div className="pt-4 border-t border-gray-100">
+                  <h3 className="text-sm font-semibold mb-4 text-primary">Réseaux Sociaux & Contact</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label className="flex items-center gap-2"><Facebook className="w-4 h-4"/> Lien Facebook</Label>
+                      <Input value={facebookUrl} onChange={e => setFacebookUrl(e.target.value)} placeholder="https://facebook.com/..." />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="flex items-center gap-2"><Instagram className="w-4 h-4"/> Lien Instagram</Label>
+                      <Input value={instagramUrl} onChange={e => setInstagramUrl(e.target.value)} placeholder="https://instagram.com/..." />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="flex items-center gap-2"><Phone className="w-4 h-4"/> Numéro WhatsApp</Label>
+                      <Input value={whatsappNumber} onChange={e => setWhatsappNumber(e.target.value)} placeholder="Ex: 0612345678" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="flex items-center gap-2"><MapPin className="w-4 h-4"/> Lien Google Maps</Label>
+                      <Input value={googleMapsUrl} onChange={e => setGoogleMapsUrl(e.target.value)} placeholder="https://maps.app.goo.gl/..." />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Prestations */}
+                <div className="pt-4 border-t border-gray-100">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-sm font-semibold text-primary">Prestations et Tarifs (Optionnel)</h3>
+                    <Button type="button" variant="outline" size="sm" onClick={addService} className="gap-2 text-xs">
+                      <Plus className="w-4 h-4" /> Ajouter une prestation
+                    </Button>
+                  </div>
+                  {vitrineServices.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">Aucune prestation ajoutée. Elles n'apparaîtront pas sur la vitrine.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {vitrineServices.map((svc, i) => (
+                        <div key={i} className="flex flex-wrap md:flex-nowrap gap-2 items-center">
+                          <Input value={svc.name} onChange={e => updateService(i, 'name', e.target.value)} placeholder="Nom du service (ex: Consultation)" className="flex-1" />
+                          <Input value={svc.price} onChange={e => updateService(i, 'price', e.target.value)} placeholder="Prix (ex: 300 DH)" className="w-32" />
+                          <Input value={svc.duration} onChange={e => updateService(i, 'duration', e.target.value)} placeholder="Durée (ex: 30 min)" className="w-32" />
+                          <Button type="button" variant="ghost" size="icon" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => removeService(i)}>
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Galerie Photos */}
+                <div className="pt-4 border-t border-gray-100">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-sm font-semibold text-primary">Galerie Photos (Maximum 6)</h3>
+                    <div>
+                      <Input type="file" id="gallery-upload" className="hidden" accept="image/*" onChange={handleUploadGalleryImage} disabled={uploadingImage || galleryImages.length >= 6} />
+                      <Label htmlFor="gallery-upload" className="cursor-pointer">
+                        <div className={`inline-flex items-center justify-center gap-2 px-3 py-1.5 text-xs font-medium border rounded-md ${galleryImages.length >= 6 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-accent'}`}>
+                          <ImageIcon className="w-4 h-4" /> {uploadingImage ? "Upload..." : "Ajouter une photo"}
+                        </div>
+                      </Label>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                    {galleryImages.map((img, i) => (
+                      <div key={i} className="relative aspect-square rounded-md border bg-gray-50 overflow-hidden group">
+                        <img src={img} alt="Gallery" className="w-full h-full object-cover" />
+                        <button type="button" onClick={() => handleDeleteGalleryImage(img)} className="absolute top-1 right-1 bg-white/80 p-1.5 rounded-full text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
 
                 <div className="flex justify-end pt-2">

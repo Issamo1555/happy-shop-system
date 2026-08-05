@@ -26,7 +26,7 @@ interface Appt {
   service_name: string;
   starts_at: string;
   duration_min: number;
-  status: "scheduled" | "completed" | "cancelled" | "no_show";
+  status: "scheduled" | "completed" | "cancelled" | "no_show" | "waiting";
   notes: string | null;
   client_id: string | null;
   product_id: string | null;
@@ -41,9 +41,10 @@ const statusColor: Record<Appt["status"], string> = {
   completed: "bg-sage/30 text-sage-foreground border-sage/50",
   cancelled: "bg-muted text-muted-foreground border-muted",
   no_show: "bg-destructive/15 text-destructive border-destructive/30",
+  waiting: "bg-orange-100 text-orange-800 border-orange-200",
 };
 const labels: Record<Appt["status"], string> = {
-  scheduled: "Prévu", completed: "Réalisé", cancelled: "Annulé", no_show: "Absent",
+  scheduled: "Prévu", completed: "Réalisé", cancelled: "Annulé", no_show: "Absent", waiting: "En attente",
 };
 
 function AgendaPage() {
@@ -174,6 +175,12 @@ function AgendaPage() {
         <Button variant="outline" onClick={syncFromGoogle} disabled={syncing}>
           <RefreshCw className={`w-4 h-4 mr-2 ${syncing ? "animate-spin" : ""}`} />
           {syncing ? "Synchro..." : "Sync Google"}
+        </Button>
+
+        <Button variant="outline" asChild title="Ouvrir l'écran de la salle d'attente">
+          <a href="/salle-attente" target="_blank" rel="noopener noreferrer">
+            <LayoutGrid className="w-4 h-4 mr-2" />Salle d'Attente
+          </a>
         </Button>
 
         <Dialog open={open} onOpenChange={setOpen}>

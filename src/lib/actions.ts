@@ -1875,7 +1875,8 @@ export const clearPaymentProofAction = createServerFn({ method: "POST" })
 export const getTenantPublicProfileAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: { slug: string } }) => {
     const rows = await db.query(
-      `SELECT id, name, slug, logo_url, primary_color, active, subscription_end_date, specialty, city, description
+      `SELECT id, name, slug, logo_url, primary_color, active, subscription_end_date, specialty, city, description,
+              facebook_url, instagram_url, whatsapp_number, google_maps_url, vitrine_services, gallery_images
        FROM tenants WHERE slug = ?`,
       [data.slug]
     );
@@ -1895,6 +1896,11 @@ export const getTenantPublicProfileAction = createServerFn({ method: "POST" })
       return null;
     }
 
+    let services = [];
+    try { if (t.vitrine_services) services = JSON.parse(t.vitrine_services); } catch(e) {}
+    let gallery = [];
+    try { if (t.gallery_images) gallery = JSON.parse(t.gallery_images); } catch(e) {}
+
     return {
       id: t.id,
       name: t.name,
@@ -1904,11 +1910,71 @@ export const getTenantPublicProfileAction = createServerFn({ method: "POST" })
       specialty: t.specialty,
       city: t.city,
       description: t.description,
+      facebook_url: t.facebook_url,
+      instagram_url: t.instagram_url,
+      whatsapp_number: t.whatsapp_number,
+      google_maps_url: t.google_maps_url,
+      services,
+      gallery,
       active: Boolean(t.active),
       isExpired
     };
   });
 
+
+export const uploadGalleryImageAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: { userId: string; base64: string; filename: string } }) => {
+    const user = await checkAdmin(data.userId);
+    const tenant = await db.queryOne("SELECT gallery_images FROM tenants WHERE id = ?", [user.tenant_id]);
+    
+    let gallery = [];
+    try { if (tenant.gallery_images) gallery = JSON.parse(tenant.gallery_images); } catch(e) {}
+
+    // Limit to 6 images
+    if (gallery.length >= 6) {
+      throw new Error("Limite de 6 images atteinte pour la galerie.");
+    }
+
+    const { writeFileSync, existsSync, mkdirSync } = await import("fs");
+    const { join } = await import("path");
+
+    const extension = data.filename.split('.').pop() || 'png';
+    const cleanFilename = `gallery_${user.tenant_id}_${Date.now()}.${extension}`;
+    const buffer = Buffer.from(data.base64.replace(/^data:image\/\w+;base64,/, ""), "base64");
+
+    const publicDir = join(process.cwd(), "public", "uploads", "gallery");
+    if (!existsSync(publicDir)) {
+      mkdirSync(publicDir, { recursive: true });
+    }
+    writeFileSync(join(publicDir, cleanFilename), buffer);
+
+    const dataDir = join(process.cwd(), "data", "uploads", "gallery");
+    if (!existsSync(dataDir)) {
+      try { mkdirSync(dataDir, { recursive: true }); } catch(e) {}
+    }
+    try { writeFileSync(join(dataDir, cleanFilename), buffer); } catch(e) {}
+
+    const webPath = `/uploads/gallery/${cleanFilename}`;
+    gallery.push(webPath);
+
+    await db.execute("UPDATE tenants SET gallery_images = ? WHERE id = ?", [JSON.stringify(gallery), user.tenant_id]);
+
+    return { success: true, url: webPath, gallery };
+  });
+
+export const deleteGalleryImageAction = createServerFn({ method: "POST" })
+  .handler(async ({ data }: { data: { userId: string; url: string } }) => {
+    const user = await checkAdmin(data.userId);
+    const tenant = await db.queryOne("SELECT gallery_images FROM tenants WHERE id = ?", [user.tenant_id]);
+    
+    let gallery = [];
+    try { if (tenant.gallery_images) gallery = JSON.parse(tenant.gallery_images); } catch(e) {}
+
+    gallery = gallery.filter((img: string) => img !== data.url);
+
+    await db.execute("UPDATE tenants SET gallery_images = ? WHERE id = ?", [JSON.stringify(gallery), user.tenant_id]);
+    return { success: true, gallery };
+  });
 
 export const createPublicAppointmentRequestAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: { tenantId: string; name: string; phone: string; motif: string } }) => {
@@ -1926,21 +1992,62 @@ export const createPublicAppointmentRequestAction = createServerFn({ method: "PO
   });
 
 export const updateTenantPublicProfileAction = createServerFn({ method: "POST" })
-  .handler(async ({ data }: { data: { userId: string; specialty: string; city: string; description: string } }) => {
+  .handler(async ({ data }: { data: { 
+    userId: string; 
+    specialty: string; 
+    city: string; 
+    description: string;
+    facebook_url?: string;
+    instagram_url?: string;
+    whatsapp_number?: string;
+    google_maps_url?: string;
+    vitrine_services?: string;
+    gallery_images?: string;
+  } }) => {
     const user = await checkAdmin(data.userId);
     await db.execute(
-      "UPDATE tenants SET specialty = ?, city = ?, description = ? WHERE id = ?",
-      [data.specialty, data.city, data.description, user.tenant_id]
+      `UPDATE tenants SET 
+        specialty = ?, city = ?, description = ?, 
+        facebook_url = ?, instagram_url = ?, whatsapp_number = ?, google_maps_url = ?,
+        vitrine_services = ?, gallery_images = ?
+       WHERE id = ?`,
+      [
+        data.specialty, data.city, data.description, 
+        data.facebook_url || null, data.instagram_url || null, data.whatsapp_number || null, data.google_maps_url || null,
+        data.vitrine_services || null, data.gallery_images || null,
+        user.tenant_id
+      ]
     );
     return { success: true };
   });
 
 export const updateTenantPublicProfileSuperAdminAction = createServerFn({ method: "POST" })
-  .handler(async ({ data }: { data: { userId: string; tenantId: string; specialty: string; city: string; description: string } }) => {
+  .handler(async ({ data }: { data: { 
+    userId: string; 
+    tenantId: string; 
+    specialty: string; 
+    city: string; 
+    description: string;
+    facebook_url?: string;
+    instagram_url?: string;
+    whatsapp_number?: string;
+    google_maps_url?: string;
+    vitrine_services?: string;
+    gallery_images?: string;
+  } }) => {
     await checkSuperAdmin(data.userId);
     await db.execute(
-      "UPDATE tenants SET specialty = ?, city = ?, description = ? WHERE id = ?",
-      [data.specialty, data.city, data.description, data.tenantId]
+      `UPDATE tenants SET 
+        specialty = ?, city = ?, description = ?, 
+        facebook_url = ?, instagram_url = ?, whatsapp_number = ?, google_maps_url = ?,
+        vitrine_services = ?, gallery_images = ?
+       WHERE id = ?`,
+      [
+        data.specialty, data.city, data.description, 
+        data.facebook_url || null, data.instagram_url || null, data.whatsapp_number || null, data.google_maps_url || null,
+        data.vitrine_services || null, data.gallery_images || null,
+        data.tenantId
+      ]
     );
     return { success: true };
   });

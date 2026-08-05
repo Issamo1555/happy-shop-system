@@ -187,6 +187,16 @@ export const initServerDb = async () => {
       subscription_end_date DATETIME,
       enabled_modules TEXT,
       payment_proof_url TEXT,
+      specialty VARCHAR(255),
+      city VARCHAR(255),
+      description TEXT,
+      subscription_status VARCHAR(50) DEFAULT 'active',
+      facebook_url VARCHAR(255),
+      instagram_url VARCHAR(255),
+      whatsapp_number VARCHAR(50),
+      google_maps_url VARCHAR(255),
+      vitrine_services TEXT,
+      gallery_images TEXT,
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
     )`,
     `CREATE TABLE IF NOT EXISTS pricing_offers (
@@ -202,6 +212,7 @@ export const initServerDb = async () => {
     )`,
     `CREATE TABLE IF NOT EXISTS prospects (
       id VARCHAR(50) PRIMARY KEY,
+      tenant_id VARCHAR(50),
       name VARCHAR(255) NOT NULL,
       phone VARCHAR(50),
       email VARCHAR(255),
@@ -212,7 +223,9 @@ export const initServerDb = async () => {
       assigned_at DATETIME NULL,
       notes TEXT,
       callback_at VARCHAR(50),
-      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+      source VARCHAR(100),
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME
     )`,
     `CREATE TABLE IF NOT EXISTS products (
       id VARCHAR(50) PRIMARY KEY,
@@ -355,6 +368,12 @@ export const initServerDb = async () => {
         specialty TEXT,
         city TEXT,
         description TEXT,
+        facebook_url TEXT,
+        instagram_url TEXT,
+        whatsapp_number TEXT,
+        google_maps_url TEXT,
+        vitrine_services TEXT,
+        gallery_images TEXT,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
       CREATE TABLE IF NOT EXISTS pricing_offers (
@@ -370,6 +389,7 @@ export const initServerDb = async () => {
       );
       CREATE TABLE IF NOT EXISTS prospects (
         id TEXT PRIMARY KEY,
+        tenant_id TEXT,
         name TEXT NOT NULL,
         phone TEXT,
         email TEXT,
@@ -380,7 +400,9 @@ export const initServerDb = async () => {
         assigned_at TEXT,
         notes TEXT,
         callback_at TEXT,
-        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        source TEXT,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME
       );
       CREATE TABLE IF NOT EXISTS products (
         id TEXT PRIMARY KEY,
@@ -504,6 +526,37 @@ export const initServerDb = async () => {
       CREATE INDEX IF NOT EXISTS idx_prod_cat ON products(category);
       CREATE INDEX IF NOT EXISTS idx_clients_name ON clients(last_name, first_name);
     `);
+  }
+
+  // Helper to safely add columns (ignores error if column exists)
+  const safeAddColumn = async (table: string, column: string, definition: string) => {
+    try {
+      if (isMySQL) {
+        await db.execute(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+      } else {
+        await db.execute(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+      }
+    } catch (e: any) {
+      // Column probably already exists, ignore
+    }
+  };
+
+  // 1.5 Auto-migrate new columns for tenants (Vitrine V2 & Subscriptions)
+  const tenantCols = [
+    { name: 'subscription_status', def: "VARCHAR(50) DEFAULT 'active'" },
+    { name: 'specialty', def: "VARCHAR(255)" },
+    { name: 'city', def: "VARCHAR(255)" },
+    { name: 'description', def: "TEXT" },
+    { name: 'facebook_url', def: "VARCHAR(255)" },
+    { name: 'instagram_url', def: "VARCHAR(255)" },
+    { name: 'whatsapp_number', def: "VARCHAR(50)" },
+    { name: 'google_maps_url', def: "VARCHAR(255)" },
+    { name: 'vitrine_services', def: "TEXT" },
+    { name: 'gallery_images', def: "TEXT" },
+    { name: 'payment_proof_url', def: "TEXT" }
+  ];
+  for (const col of tenantCols) {
+    await safeAddColumn('tenants', col.name, col.def);
   }
 
   // ============================================

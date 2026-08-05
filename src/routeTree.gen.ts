@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SalleAttenteRouteImport } from './routes/salle-attente'
 import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppRouteImport } from './routes/_app'
@@ -28,6 +29,11 @@ import { Route as AppAgendaRouteImport } from './routes/_app.agenda'
 import { Route as AppAdminTenantsRouteImport } from './routes/_app.admin-tenants'
 import { Route as AppAccessLogsRouteImport } from './routes/_app.access-logs'
 
+const SalleAttenteRoute = SalleAttenteRouteImport.update({
+  id: '/salle-attente',
+  path: '/salle-attente',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PricingRoute = PricingRouteImport.update({
   id: '/pricing',
   path: '/pricing',
@@ -122,6 +128,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/pricing': typeof PricingRoute
+  '/salle-attente': typeof SalleAttenteRoute
   '/access-logs': typeof AppAccessLogsRoute
   '/admin-tenants': typeof AppAdminTenantsRoute
   '/agenda': typeof AppAgendaRoute
@@ -141,6 +148,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/pricing': typeof PricingRoute
+  '/salle-attente': typeof SalleAttenteRoute
   '/access-logs': typeof AppAccessLogsRoute
   '/admin-tenants': typeof AppAdminTenantsRoute
   '/agenda': typeof AppAgendaRoute
@@ -162,6 +170,7 @@ export interface FileRoutesById {
   '/_app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
   '/pricing': typeof PricingRoute
+  '/salle-attente': typeof SalleAttenteRoute
   '/_app/access-logs': typeof AppAccessLogsRoute
   '/_app/admin-tenants': typeof AppAdminTenantsRoute
   '/_app/agenda': typeof AppAgendaRoute
@@ -183,6 +192,7 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/pricing'
+    | '/salle-attente'
     | '/access-logs'
     | '/admin-tenants'
     | '/agenda'
@@ -202,6 +212,7 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/pricing'
+    | '/salle-attente'
     | '/access-logs'
     | '/admin-tenants'
     | '/agenda'
@@ -222,6 +233,7 @@ export interface FileRouteTypes {
     | '/_app'
     | '/login'
     | '/pricing'
+    | '/salle-attente'
     | '/_app/access-logs'
     | '/_app/admin-tenants'
     | '/_app/agenda'
@@ -243,11 +255,19 @@ export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
   LoginRoute: typeof LoginRoute
   PricingRoute: typeof PricingRoute
+  SalleAttenteRoute: typeof SalleAttenteRoute
   CentreSlugRoute: typeof CentreSlugRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/salle-attente': {
+      id: '/salle-attente'
+      path: '/salle-attente'
+      fullPath: '/salle-attente'
+      preLoaderRoute: typeof SalleAttenteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/pricing': {
       id: '/pricing'
       path: '/pricing'
@@ -416,6 +436,7 @@ const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
   LoginRoute: LoginRoute,
   PricingRoute: PricingRoute,
+  SalleAttenteRoute: SalleAttenteRoute,
   CentreSlugRoute: CentreSlugRoute,
 }
 export const routeTree = rootRouteImport
