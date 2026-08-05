@@ -816,6 +816,44 @@ export const initServerDb = async () => {
     console.error("Error seeding SaaS products:", err.message);
   }
 
+  // ============================================
+  // 8. SEED STAGIAIRE TEST TENANT (CLOUD & LOCAL)
+  // ============================================
+  try {
+    const stagiaireTenantId = "tenant-test-stagiaire";
+    const stagiaireEmail = "stagiaire@mamshair.com";
+    const stagiairePassword = "Stagiaire2026!";
+
+    if (isMySQL) {
+      await db.execute(
+        "INSERT IGNORE INTO tenants (id, name, slug, primary_color, active, enabled_modules) VALUES (?, ?, ?, '#D4A574', 1, ?)",
+        [stagiaireTenantId, "Mams Hair - Sandbox Test", "mams-hair-test", '["caisse", "catalogue", "clients", "agenda", "historique", "tickets", "crm"]']
+      );
+    } else {
+      await db.execute(
+        "INSERT OR IGNORE INTO tenants (id, name, slug, primary_color, active, enabled_modules) VALUES (?, ?, ?, '#D4A574', 1, ?)",
+        [stagiaireTenantId, "Mams Hair - Sandbox Test", "mams-hair-test", '["caisse", "catalogue", "clients", "agenda", "historique", "tickets", "crm"]']
+      );
+    }
+
+    const stagiaireUser = await db.queryOne("SELECT id FROM users WHERE email = ?", [stagiaireEmail]);
+    const hashedPassword = bcrypt.hashSync(stagiairePassword, 10);
+    if (!stagiaireUser) {
+      await db.execute(
+        "INSERT INTO users (id, email, password, full_name, role, tenant_id) VALUES (?, ?, ?, ?, 'admin', ?)",
+        ["stagiaire-admin-id", stagiaireEmail, hashedPassword, "Stagiaire Testeur", stagiaireTenantId]
+      );
+      console.log("🌱 Created Stagiaire Testeur user: stagiaire@mamshair.com / Stagiaire2026!");
+    } else {
+      await db.execute(
+        "UPDATE users SET password = ?, role = 'admin', tenant_id = ? WHERE email = ?",
+        [hashedPassword, stagiaireTenantId, stagiaireEmail]
+      );
+    }
+  } catch (err: any) {
+    console.error("Error seeding stagiaire tenant:", err.message);
+  }
+
   // Sync existing payment proofs to dist/client on startup
   try {
     const publicDir = join(process.cwd(), "public", "payment_proofs");
