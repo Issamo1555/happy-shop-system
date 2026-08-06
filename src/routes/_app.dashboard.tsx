@@ -8,7 +8,7 @@ export const Route = createFileRoute("/_app/dashboard")({
 });
 
 function DashboardPage() {
-  const { isAdmin } = useAuth();
+  const { user, isAdmin } = useAuth();
 
   const menuItems = [
     { to: "/caisse", label: "Caisse", icon: ShoppingBag, color: "bg-primary/10 text-primary", description: "Interface de vente et encaissement" },
@@ -17,7 +17,7 @@ function DashboardPage() {
     { to: "/agenda", label: "Agenda", icon: Calendar, color: "bg-purple-100 text-purple-600", description: "Planning des rendez-vous" },
     { to: "/historique", label: "Historique", icon: Receipt, color: "bg-orange-100 text-orange-600", description: "Suivi des ventes et rapports" },
     { to: "/settings", label: "Paramètres", icon: Settings, color: "bg-gray-100 text-gray-600", description: "Configuration de l'établissement", adminOnly: true },
-    { to: "/db-admin", label: "Base de données", icon: Database, color: "bg-red-100 text-red-600", description: "Maintenance technique", adminOnly: true },
+    { to: "/db-admin", label: "Base de données", icon: Database, color: "bg-red-100 text-red-600", description: "Maintenance technique", systemAdminOnly: true },
   ];
 
   return (
@@ -33,6 +33,7 @@ function DashboardPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-4">
         {menuItems.map((item) => {
           if (item.adminOnly && !isAdmin) return null;
+          if ((item as any).systemAdminOnly && (user?.email !== 'superadmin@posrdv.com' && user?.tenant_id !== 'system-tenant')) return null;
           const Icon = item.icon;
           return (
             <Link key={item.to} to={item.to} className="group">

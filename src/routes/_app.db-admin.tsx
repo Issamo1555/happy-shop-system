@@ -20,16 +20,18 @@ function DBAdminPage() {
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // REDIRECT IF NOT ADMIN
+  // REDIRECT IF NOT SYSTEM SUPER ADMIN
   useEffect(() => {
-    if (!authLoading && !isAdmin) {
-      toast.error("Accès réservé à l'administrateur");
+    const isSystemAdmin = user?.email === 'superadmin@posrdv.com' || user?.tenant_id === 'system-tenant';
+    if (!authLoading && (!isAdmin || !isSystemAdmin)) {
+      toast.error("Accès réservé au Super Admin système");
       navigate({ to: "/caisse" });
     }
-  }, [isAdmin, authLoading]);
+  }, [user, isAdmin, authLoading]);
 
   useEffect(() => {
-    if (user?.id && isAdmin) {
+    const isSystemAdmin = user?.email === 'superadmin@posrdv.com' || user?.tenant_id === 'system-tenant';
+    if (user?.id && isAdmin && isSystemAdmin) {
       getTablesAction({ data: { adminId: user.id } }).then((res: any) => {
         const names = res.map((t: any) => t.name);
         setTables(names);
@@ -39,7 +41,8 @@ function DBAdminPage() {
   }, [user, isAdmin]);
 
   useEffect(() => {
-    if (selectedTable && user?.id && isAdmin) {
+    const isSystemAdmin = user?.email === 'superadmin@posrdv.com' || user?.tenant_id === 'system-tenant';
+    if (selectedTable && user?.id && isAdmin && isSystemAdmin) {
       setLoading(true);
       getTableDataAction({ data: { tableName: selectedTable, adminId: user.id } }).then((res: any) => {
         setData(res);

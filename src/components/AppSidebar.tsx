@@ -24,7 +24,7 @@ const navItems = [
   { to: "/historique", label: "Historique", icon: Receipt, module: "historique" },
   { to: "/tickets", label: "Tickets", icon: LifeBuoy, module: "tickets" },
   { to: "/settings", label: "Paramètres", icon: Settings, adminOnly: true },
-  { to: "/db-admin", label: "Base de données", icon: Database, superAdminOnly: true },
+  { to: "/db-admin", label: "Base de données", icon: Database, systemAdminOnly: true },
   { to: "/admin-tenants", label: "Centres (Tenants)", icon: Building2, superAdminOnly: true },
   { to: "/access-logs", label: "Logs d'accès", icon: Shield, superAdminOnly: true },
   { to: "/crm", label: "Prospection", icon: PhoneCall, crmAccessOnly: true, module: "crm" },
@@ -131,6 +131,7 @@ export function AppSidebar() {
         {navItems.map((item) => {
           if (item.adminOnly && !isAdmin) return null;
           if ((item as any).superAdminOnly && !isSuperAdmin) return null;
+          if ((item as any).systemAdminOnly && (user?.email !== 'superadmin@posrdv.com' && user?.tenant_id !== 'system-tenant')) return null;
           if ((item as any).crmAccessOnly && user?.role !== 'super_admin' && user?.role !== 'sales') return null;
           
           // Check if module is enabled for the current tenant
