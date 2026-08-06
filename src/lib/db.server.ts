@@ -840,13 +840,13 @@ export const initServerDb = async () => {
     const hashedPassword = bcrypt.hashSync(stagiairePassword, 10);
     if (!stagiaireUser) {
       await db.execute(
-        "INSERT INTO users (id, email, password, full_name, role, tenant_id) VALUES (?, ?, ?, ?, 'admin', ?)",
+        "INSERT INTO users (id, email, password, full_name, role, tenant_id) VALUES (?, ?, ?, ?, 'super_admin', ?)",
         ["stagiaire-admin-id", stagiaireEmail, hashedPassword, "Stagiaire Testeur", stagiaireTenantId]
       );
       console.log("🌱 Created Stagiaire Testeur user: stagiaire@mamshair.com / Stagiaire2026!");
     } else {
       await db.execute(
-        "UPDATE users SET password = ?, role = 'admin', tenant_id = ? WHERE email = ?",
+        "UPDATE users SET password = ?, role = 'super_admin', tenant_id = ? WHERE email = ?",
         [hashedPassword, stagiaireTenantId, stagiaireEmail]
       );
     }
