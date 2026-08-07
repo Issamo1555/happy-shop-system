@@ -1,6 +1,6 @@
 # ============================================
-# POSetRDV Super-Admin - Docker Compose
-# Synchronisé sur la base de données de production
+# POSetRDV Super-Admin Staging - Docker Compose
+# Base de données 100% Indépendante pour le Stagiaire
 # ============================================
 
 services:
@@ -13,22 +13,37 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3000
-      - MYSQL_HOST=posrdv-db
+      - MYSQL_HOST=db-superadmin
       - MYSQL_PORT=3306
       - MYSQL_USER=${MYSQL_USER:-pos_user}
       - MYSQL_PASSWORD=${MYSQL_PASSWORD:-PosRdv2027!Secure}
-      - MYSQL_DATABASE=${MYSQL_DATABASE:-mums_home_pos}
+      - MYSQL_DATABASE=${MYSQL_DATABASE:-posrdv_superadmin}
       - GOOGLE_CLIENT_EMAIL=${GOOGLE_CLIENT_EMAIL:-compteposrdv@posrdv.iam.gserviceaccount.com}
       - GOOGLE_PRIVATE_KEY=${GOOGLE_PRIVATE_KEY}
       - GOOGLE_CALENDAR_ID=${GOOGLE_CALENDAR_ID:-issamo1555@gmail.com}
     volumes:
       - ./data-superadmin:/app/data
-    networks:
-      - default
-      - mums_pos_net
+    depends_on:
+      db-superadmin:
+        condition: service_healthy
 
-networks:
-  default:
-  mums_pos_net:
-    external: true
-    name: mums-home-pos_default
+  db-superadmin:
+    image: mariadb:10.11
+    container_name: posrdv-db-superadmin
+    restart: always
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-RootPosRdv2027!}
+      - MYSQL_DATABASE=${MYSQL_DATABASE:-posrdv_superadmin}
+      - MYSQL_USER=${MYSQL_USER:-pos_user}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-PosRdv2027!Secure}
+    volumes:
+      - posrdv_superadmin_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  posrdv_superadmin_data:
