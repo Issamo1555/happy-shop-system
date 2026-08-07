@@ -567,16 +567,18 @@ export const initServerDb = async () => {
   if (!alreadyMigrated) {
     console.log("🔄 Running multi-tenant migration — adding tenant_id to all tables...");
 
-    // Create default tenant
+    // Create default tenants if not exist
     const defaultTenantId = "default-tenant";
-    try {
-      await db.execute(
-        "INSERT INTO tenants (id, name, slug, invite_code, active) VALUES (?, ?, ?, ?, 1)",
-        [defaultTenantId, "Mums'Home", "mums-home", "MUMS2026"]
-      );
-    } catch (e: any) {
-      // Tenant might already exist if partial migration happened before
-      console.log("Default tenant may already exist:", e.message);
+    const defaultModules = '["caisse", "catalogue", "clients", "agenda", "historique", "tickets", "crm"]';
+    
+    if (isMySQL) {
+      await db.execute("INSERT IGNORE INTO tenants (id, name, slug, invite_code, active, primary_color, enabled_modules) VALUES (?, ?, ?, ?, 1, '#D4A574', ?)", [defaultTenantId, "Mums'Home", "mums-home", "MUMS2026", defaultModules]);
+      await db.execute("INSERT IGNORE INTO tenants (id, name, slug, invite_code, active, primary_color, enabled_modules) VALUES (?, ?, ?, ?, 1, '#D4A574', ?)", ["marrakech-senior-dentist", "Marrakech Senior Dentist", "marrakech-senior-dentist", "DEN2026", defaultModules]);
+      await db.execute("INSERT IGNORE INTO tenants (id, name, slug, invite_code, active, primary_color, enabled_modules) VALUES (?, ?, ?, ?, 1, '#D4A574', ?)", ["centre-keni", "Demo Centre Kenisiterapie", "centre-keni", "KENI2026", defaultModules]);
+    } else {
+      await db.execute("INSERT OR IGNORE INTO tenants (id, name, slug, invite_code, active, primary_color, enabled_modules) VALUES (?, ?, ?, ?, 1, '#D4A574', ?)", [defaultTenantId, "Mums'Home", "mums-home", "MUMS2026", defaultModules]);
+      await db.execute("INSERT OR IGNORE INTO tenants (id, name, slug, invite_code, active, primary_color, enabled_modules) VALUES (?, ?, ?, ?, 1, '#D4A574', ?)", ["marrakech-senior-dentist", "Marrakech Senior Dentist", "marrakech-senior-dentist", "DEN2026", defaultModules]);
+      await db.execute("INSERT OR IGNORE INTO tenants (id, name, slug, invite_code, active, primary_color, enabled_modules) VALUES (?, ?, ?, ?, 1, '#D4A574', ?)", ["centre-keni", "Demo Centre Kenisiterapie", "centre-keni", "KENI2026", defaultModules]);
     }
 
     // Add tenant_id column to all business tables
