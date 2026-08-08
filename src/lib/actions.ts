@@ -753,9 +753,10 @@ export const createAppointmentAction = createServerFn({ method: "POST" })
 
     const createdAt = data.created_at || new Date().toLocaleString('sv-SE').replace(' ', 'T');
     
+    const status = data.status || "scheduled";
     const stmt = db.prepare(`
-      INSERT INTO appointments (id, client_id, client_name, product_id, service_name, starts_at, duration_min, notes, created_by, google_event_id, created_at, tenant_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO appointments (id, client_id, client_name, product_id, service_name, starts_at, duration_min, notes, created_by, google_event_id, created_at, tenant_id, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     
 
@@ -770,7 +771,7 @@ export const createAppointmentAction = createServerFn({ method: "POST" })
       notes: data.notes
     }, googleConfig);
 
-    await stmt.run(id, data.client_id, data.client_name, data.product_id, data.service_name, startsAt, data.duration_min, data.notes, data.created_by, googleEventId, createdAt, user.tenant_id);
+    await stmt.run(id, data.client_id, data.client_name, data.product_id, data.service_name, startsAt, data.duration_min, data.notes, data.created_by, googleEventId, createdAt, user.tenant_id, status);
     return { success: true, id, googleEventId };
   });
 

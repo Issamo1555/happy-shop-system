@@ -427,7 +427,7 @@ function ApptDialog({ products, clients, prospects, defaultDay, userId, tenantId
   const [date, setDate] = useState(format(defaultDay, "yyyy-MM-dd"));
   const [time, setTime] = useState("10:00");
   const [duration, setDuration] = useState(60);
-  const [notes, setNotes] = useState("");
+  const [status, setStatus] = useState<"scheduled" | "waiting" | "completed">("scheduled");
   const [submitting, setSubmitting] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -482,6 +482,7 @@ function ApptDialog({ products, clients, prospects, defaultDay, userId, tenantId
           duration_min: duration,
           notes: notes || null,
           created_by: userId ?? null,
+          status: status,
         }
       });
       toast.success(isSystem ? "Rendez-vous de démo créé" : "Rendez-vous créé");
@@ -583,6 +584,17 @@ function ApptDialog({ products, clients, prospects, defaultDay, userId, tenantId
           <div><Label>Date</Label><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} required /></div>
           <div><Label>Heure</Label><Input type="time" value={time} onChange={(e) => setTime(e.target.value)} required /></div>
           <div><Label>Durée (min)</Label><Input type="number" min={15} step={15} value={duration} onChange={(e) => setDuration(Number(e.target.value) || 60)} /></div>
+        </div>
+        <div>
+          <Label>Statut Initial</Label>
+          <Select value={status} onValueChange={(v) => setStatus(v as any)}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="scheduled">🔵 Prévu (Agenda)</SelectItem>
+              <SelectItem value="waiting">🟧 En attente (Salle d'Attente)</SelectItem>
+              <SelectItem value="completed">🟢 Presté (Réalisé)</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
         <div><Label>Notes</Label><Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} /></div>
         <DialogFooter>
