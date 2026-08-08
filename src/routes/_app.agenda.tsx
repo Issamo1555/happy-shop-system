@@ -44,7 +44,7 @@ const statusColor: Record<Appt["status"], string> = {
   waiting: "bg-orange-100 text-orange-800 border-orange-200",
 };
 const labels: Record<Appt["status"], string> = {
-  scheduled: "Prévu", completed: "Réalisé", cancelled: "Annulé", no_show: "Absent", waiting: "En attente",
+  scheduled: "Prévu", completed: "Presté (Réalisé)", cancelled: "Annulé", no_show: "Absent", waiting: "En attente",
 };
 
 function AgendaPage() {
@@ -401,10 +401,11 @@ function ApptRow({ appt, onStatus, onEdit, onDelete }: { appt: Appt; onStatus: (
       </div>
       <Badge className={statusColor[appt.status]}>{labels[appt.status]}</Badge>
       <Select value={appt.status} onValueChange={(v) => onStatus(appt.id, v as Appt["status"])}>
-        <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+        <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
         <SelectContent>
           <SelectItem value="scheduled">Prévu</SelectItem>
-          <SelectItem value="completed">Réalisé</SelectItem>
+          <SelectItem value="waiting">En attente</SelectItem>
+          <SelectItem value="completed">Presté (Réalisé)</SelectItem>
           <SelectItem value="cancelled">Annulé</SelectItem>
           <SelectItem value="no_show">Absent</SelectItem>
         </SelectContent>
