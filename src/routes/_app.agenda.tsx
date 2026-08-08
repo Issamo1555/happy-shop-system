@@ -247,6 +247,18 @@ function DayView({ appts, onStatus, onEdit, onDelete }: { appts: Appt[]; onStatu
   );
 }
 
+function safeParseDate(dateStr: string | null | undefined): Date {
+  if (!dateStr) return new Date();
+  try {
+    const isoStr = dateStr.includes('T') ? dateStr : dateStr.replace(' ', 'T');
+    const d = new Date(isoStr);
+    if (isNaN(d.getTime())) return new Date();
+    return d;
+  } catch (e) {
+    return new Date();
+  }
+}
+
 /* ============================== WEEK VIEW ============================== */
 function WeekView({ appts, day, onStatus, onDayClick, onEdit }: { appts: Appt[]; day: Date; onStatus: (id: string, s: Appt["status"]) => void; onDayClick: (d: Date) => void; onEdit: (a: Appt) => void }) {
   const weekStart = startOfWeek(day, { weekStartsOn: 1 });
@@ -256,7 +268,7 @@ function WeekView({ appts, day, onStatus, onDayClick, onEdit }: { appts: Appt[];
     const map: Record<string, Appt[]> = {};
     days.forEach(d => { map[format(d, "yyyy-MM-dd")] = []; });
     appts.forEach(a => {
-      const key = format(parseISO(a.starts_at), "yyyy-MM-dd");
+      const key = format(safeParseDate(a.starts_at), "yyyy-MM-dd");
       if (map[key]) map[key].push(a);
     });
     return map;
@@ -305,12 +317,13 @@ function WeekView({ appts, day, onStatus, onDayClick, onEdit }: { appts: Appt[];
 }
 
 function WeekApptCard({ appt, onEdit }: { appt: Appt; onEdit: (a: Appt) => void }) {
-  const start = parseISO(appt.starts_at);
+  const start = safeParseDate(appt.starts_at);
+  const statusKey: Appt["status"] = (appt.status && statusColor[appt.status]) ? appt.status : "scheduled";
   return (
     <div 
       onClick={() => onEdit(appt)} 
       title={`${format(start, "HH:mm")} - ${appt.client_name}\n${appt.service_name}`}
-      className={`rounded-md p-1 text-[10px] leading-tight border cursor-pointer transition-all hover:shadow-md ${statusColor[appt.status]}`}
+      className={`rounded-md p-1 text-[10px] leading-tight border cursor-pointer transition-all hover:shadow-md ${statusColor[statusKey]}`}
     >
       <p className="font-semibold break-words">{format(start, "HH:mm")} <br className="hidden sm:block" />{appt.client_name}</p>
       <p className="break-words opacity-80 mt-0.5">{appt.service_name}</p>
@@ -329,7 +342,7 @@ function MonthView({ appts, day, onDayClick }: { appts: Appt[]; day: Date; onDay
   const apptsByDay = useMemo(() => {
     const map: Record<string, Appt[]> = {};
     appts.forEach(a => {
-      const key = format(parseISO(a.starts_at), "yyyy-MM-dd");
+      const key = format(safeParseDate(a.starts_at), "yyyy-MM-dd");
       if (!map[key]) map[key] = [];
       map[key].push(a);
     });
@@ -358,11 +371,14 @@ function MonthView({ appts, day, onDayClick }: { appts: Appt[]; day: Date; onDay
                 {format(d, "d")}
               </p>
               <div className="space-y-0.5">
-                {dayAppts.slice(0, 3).map(a => (
-                  <div key={a.id} className={`text-[10px] px-1 py-0.5 rounded truncate border ${statusColor[a.status]}`}>
-                    {format(parseISO(a.starts_at), "HH:mm")} {a.client_name}
-                  </div>
-                ))}
+                {dayAppts.slice(0, 3).map(a => {
+                  const sKey: Appt["status"] = (a.status && statusColor[a.status]) ? a.status : "scheduled";
+                  return (
+                    <div key={a.id} className={`text-[10px] px-1 py-0.5 rounded truncate border ${statusColor[sKey]}`}>
+                      {format(safeParseDate(a.starts_at), "HH:mm")} {a.client_name}
+                    </div>
+                  );
+                })}
                 {dayAppts.length > 3 && (
                   <p className="text-[10px] text-primary font-medium">+{dayAppts.length - 3} de plus</p>
                 )}
@@ -377,7 +393,7 @@ function MonthView({ appts, day, onDayClick }: { appts: Appt[]; day: Date; onDay
 
 /* ============================== APPOINTMENT ROW (Day View) ============================== */
 function ApptRow({ appt, onStatus, onEdit, onDelete }: { appt: Appt; onStatus: (id: string, s: Appt["status"]) => void; onEdit: (a: Appt) => void; onDelete: (id: string) => void }) {
-  const start = parseISO(appt.starts_at);
+  const start = safeParseDate(appt.starts_at);
   return (
     <div className="pos-card p-4 flex flex-wrap items-center gap-4 h-full">
       <div className="flex-1 min-w-[200px] flex items-center gap-4 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => onEdit(appt)}>
@@ -621,7 +637,7 @@ function EditApptDialog({ appt, products, userId, tenantId, onSaved, onDelete }:
 }) {
   const [clientName, setClientName] = useState(appt.client_name);
   const [serviceName, setServiceName] = useState(appt.service_name);
-  const startDate = parseISO(appt.starts_at);
+  const startDate = safeParseDate(appt.starts_at);
   const [date, setDate] = useState(format(startDate, "yyyy-MM-dd"));
   const [time, setTime] = useState(format(startDate, "HH:mm"));
   const [duration, setDuration] = useState(appt.duration_min);
