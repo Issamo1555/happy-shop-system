@@ -76,37 +76,50 @@ function AgendaPage() {
   };
 
   const load = async () => {
+    if (!user?.tenant_id) return;
     let data: any[] = [];
-    if (view === "day") {
-      const dayStr = format(day, "yyyy-MM-dd");
-      data = await getAppointmentsAction({ data: { date: dayStr, tenantId: user?.tenant_id } }) as any[];
-    } else {
-      const start = view === "week" ? startOfWeek(day, { weekStartsOn: 1 }) : startOfMonth(day);
-      const end = view === "week" ? endOfWeek(day, { weekStartsOn: 1 }) : endOfMonth(day);
-      data = await getAppointmentsRangeAction({ data: { from: format(start, "yyyy-MM-dd"), to: format(end, "yyyy-MM-dd"), tenantId: user?.tenant_id } }) as any[];
+    try {
+      if (view === "day") {
+        const dayStr = format(day, "yyyy-MM-dd");
+        data = (await getAppointmentsAction({ data: { date: dayStr, tenantId: user.tenant_id } })) as any[];
+      } else {
+        const start = view === "week" ? startOfWeek(day, { weekStartsOn: 1 }) : startOfMonth(day);
+        const end = view === "week" ? endOfWeek(day, { weekStartsOn: 1 }) : endOfMonth(day);
+        data = (await getAppointmentsRangeAction({
+          data: { from: format(start, "yyyy-MM-dd"), to: format(end, "yyyy-MM-dd"), tenantId: user.tenant_id },
+        })) as any[];
+      }
+      setAppts(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error("Erreur chargement rendez-vous agenda:", e);
+      setAppts([]);
     }
-
-    setAppts(data);
   };
 
   useEffect(() => {
+    if (!user?.tenant_id) return;
     (async () => {
-      const pr = await getProductsAction({ data: { tenantId: user?.tenant_id } });
-      setProducts(pr as unknown as Product[]);
-      const cl = await getClientsAction({ data: { tenantId: user?.tenant_id } });
-      setClients(cl as unknown as Client[]);
-      
-      if (user?.tenant_id === 'system-tenant' && user?.id) {
-        try {
+      try {
+        const [pr, cl] = await Promise.all([
+          getProductsAction({ data: { tenantId: user.tenant_id } }),
+          getClientsAction({ data: { tenantId: user.tenant_id } }),
+        ]);
+        setProducts((pr as unknown as Product[]) || []);
+        setClients((cl as unknown as Client[]) || []);
+
+        if (user.tenant_id === "system-tenant" && user?.id) {
           const prs = await getProspectsAction({ data: { userId: user.id } });
-          setProspects(prs || []);
-        } catch (e) {
-          console.error("Error loading prospects for agenda:", e);
+          setProspects((prs as any[]) || []);
         }
+      } catch (e) {
+        console.error("Erreur chargement produits/clients agenda:", e);
       }
     })();
   }, [user?.tenant_id, user?.id]);
-  useEffect(() => { load(); }, [day, view, user?.tenant_id]);
+
+  useEffect(() => {
+    load();
+  }, [day, view, user?.tenant_id]);
 
   const setStatus = async (id: string, s: Appt["status"]) => {
     try {
