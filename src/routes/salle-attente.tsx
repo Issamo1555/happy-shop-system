@@ -197,12 +197,22 @@ function SalleAttentePage() {
                 {/* CHOIX DU CLIENT */}
                 <div className="space-y-2">
                   <Label>Client (Existant ou Nouveau)</Label>
-                  <Select value={selectedClientId} onValueChange={(val) => { setSelectedClientId(val); if (val) setClientName(""); }}>
+                  <Select
+                    value={selectedClientId || "__manual"}
+                    onValueChange={(val) => {
+                      if (val === "__manual") {
+                        setSelectedClientId("");
+                      } else {
+                        setSelectedClientId(val);
+                        setClientName("");
+                      }
+                    }}
+                  >
                     <SelectTrigger className="w-full">
                       <SelectValue placeholder="Sélectionner un client existant..." />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">-- Saisie manuelle --</SelectItem>
+                      <SelectItem value="__manual">-- Saisie manuelle --</SelectItem>
                       {clients.map(c => (
                         <SelectItem key={c.id} value={c.id}>
                           {c.first_name} {c.last_name || ""}
@@ -224,12 +234,22 @@ function SalleAttentePage() {
                 {/* CHOIX DU SERVICE */}
                 <div className="space-y-2">
                   <Label>Service / Prestation</Label>
-                  <Select value={selectedProductId} onValueChange={(val) => { setSelectedProductId(val); if (val) setServiceName(""); }}>
+                  <Select
+                    value={selectedProductId || "__manual"}
+                    onValueChange={(val) => {
+                      if (val === "__manual") {
+                        setSelectedProductId("");
+                      } else {
+                        setSelectedProductId(val);
+                        setServiceName("");
+                      }
+                    }}
+                  >
                     <SelectTrigger className="w-full">
                       <SelectValue placeholder="Choisir dans le catalogue..." />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">-- Saisie manuelle --</SelectItem>
+                      <SelectItem value="__manual">-- Saisie manuelle --</SelectItem>
                       {products.map(p => (
                         <SelectItem key={p.id} value={p.id}>
                           {p.name}
