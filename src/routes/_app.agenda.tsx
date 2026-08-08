@@ -399,17 +399,24 @@ function ApptRow({ appt, onStatus, onEdit, onDelete }: { appt: Appt; onStatus: (
           )}
         </div>
       </div>
-      <Badge className={statusColor[appt.status]}>{labels[appt.status]}</Badge>
-      <Select value={appt.status} onValueChange={(v) => onStatus(appt.id, v as Appt["status"])}>
-        <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
-        <SelectContent>
-          <SelectItem value="scheduled">Prévu</SelectItem>
-          <SelectItem value="waiting">En attente</SelectItem>
-          <SelectItem value="completed">Presté (Réalisé)</SelectItem>
-          <SelectItem value="cancelled">Annulé</SelectItem>
-          <SelectItem value="no_show">Absent</SelectItem>
-        </SelectContent>
-      </Select>
+      {(() => {
+        const statusKey: Appt["status"] = (appt.status && statusColor[appt.status]) ? appt.status : "scheduled";
+        return (
+          <>
+            <Badge className={statusColor[statusKey]}>{labels[statusKey]}</Badge>
+            <Select value={statusKey} onValueChange={(v) => onStatus(appt.id, v as Appt["status"])}>
+              <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="scheduled">Prévu</SelectItem>
+                <SelectItem value="waiting">En attente</SelectItem>
+                <SelectItem value="completed">Presté (Réalisé)</SelectItem>
+                <SelectItem value="cancelled">Annulé</SelectItem>
+                <SelectItem value="no_show">Absent</SelectItem>
+              </SelectContent>
+            </Select>
+          </>
+        );
+      })()}
       <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive hover:bg-destructive/10" onClick={(e) => { e.stopPropagation(); onDelete(appt.id); }}>
         <Trash2 className="w-4 h-4" />
       </Button>
@@ -552,7 +559,7 @@ function ApptDialog({ products, clients, prospects, defaultDay, userId, tenantId
               )}
             </div>
           ) : (
-            <Select value={clientId} onValueChange={(v) => setClientId(v === "__none" ? "" : v)}>
+            <Select value={clientId || "__none"} onValueChange={(v) => setClientId(v === "__none" ? "" : v)}>
               <SelectTrigger><SelectValue placeholder="Sélectionner..." /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="__none">Saisir manuellement</SelectItem>
@@ -571,9 +578,10 @@ function ApptDialog({ products, clients, prospects, defaultDay, userId, tenantId
         )}
         <div>
           <Label>{isSystem ? "Démonstration" : "Prestation"}</Label>
-          <Select value={productId} onValueChange={setProductId}>
+          <Select value={productId || "__none"} onValueChange={(v) => setProductId(v === "__none" ? "" : v)}>
             <SelectTrigger><SelectValue placeholder="Choisir..." /></SelectTrigger>
             <SelectContent className="max-h-[300px]">
+              <SelectItem value="__none">Choisir une prestation...</SelectItem>
               {products.map((p) => (
                 <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
               ))}
