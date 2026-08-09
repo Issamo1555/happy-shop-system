@@ -228,16 +228,17 @@ function AgendaPage() {
 
 /* ============================== DAY VIEW ============================== */
 function DayView({ appts, onStatus, onEdit, onDelete }: { appts: Appt[]; onStatus: (id: string, s: Appt["status"]) => void; onEdit: (a: Appt) => void; onDelete: (id: string) => void }) {
+  const safeAppts = Array.isArray(appts) ? appts : [];
   const grouped = useMemo(() => {
     const map: Record<string, Appt[]> = {};
-    appts.forEach(a => {
+    safeAppts.forEach(a => {
       if (!map[a.starts_at]) map[a.starts_at] = [];
       map[a.starts_at].push(a);
     });
     return Object.keys(map).sort().map(k => map[k]);
-  }, [appts]);
+  }, [safeAppts]);
 
-  if (appts.length === 0) {
+  if (safeAppts.length === 0) {
     return (
       <div className="pos-card p-12 text-center text-muted-foreground">
         <CalendarIcon className="w-10 h-10 mx-auto mb-2 opacity-50" />
@@ -274,18 +275,20 @@ function safeParseDate(dateStr: string | null | undefined): Date {
 
 /* ============================== WEEK VIEW ============================== */
 function WeekView({ appts, day, onStatus, onDayClick, onEdit }: { appts: Appt[]; day: Date; onStatus: (id: string, s: Appt["status"]) => void; onDayClick: (d: Date) => void; onEdit: (a: Appt) => void }) {
-  const weekStart = startOfWeek(day, { weekStartsOn: 1 });
-  const days = eachDayOfInterval({ start: weekStart, end: endOfWeek(day, { weekStartsOn: 1 }) });
+  const safeAppts = Array.isArray(appts) ? appts : [];
+  const safeDay = (day && !isNaN(new Date(day).getTime())) ? new Date(day) : new Date();
+  const weekStart = startOfWeek(safeDay, { weekStartsOn: 1 });
+  const days = eachDayOfInterval({ start: weekStart, end: endOfWeek(safeDay, { weekStartsOn: 1 }) });
 
   const apptsByDay = useMemo(() => {
     const map: Record<string, Appt[]> = {};
     days.forEach(d => { map[format(d, "yyyy-MM-dd")] = []; });
-    appts.forEach(a => {
+    safeAppts.forEach(a => {
       const key = format(safeParseDate(a.starts_at), "yyyy-MM-dd");
       if (map[key]) map[key].push(a);
     });
     return map;
-  }, [appts, days]);
+  }, [safeAppts, days]);
 
   return (
     <div className="grid grid-cols-7 gap-1" style={{ minHeight: "60vh" }}>
@@ -346,21 +349,23 @@ function WeekApptCard({ appt, onEdit }: { appt: Appt; onEdit: (a: Appt) => void 
 
 /* ============================== MONTH VIEW ============================== */
 function MonthView({ appts, day, onDayClick }: { appts: Appt[]; day: Date; onDayClick: (d: Date) => void }) {
-  const monthStart = startOfMonth(day);
-  const monthEnd = endOfMonth(day);
+  const safeAppts = Array.isArray(appts) ? appts : [];
+  const safeDay = (day && !isNaN(new Date(day).getTime())) ? new Date(day) : new Date();
+  const monthStart = startOfMonth(safeDay);
+  const monthEnd = endOfMonth(safeDay);
   const calStart = startOfWeek(monthStart, { weekStartsOn: 1 });
   const calEnd = endOfWeek(monthEnd, { weekStartsOn: 1 });
   const allDays = eachDayOfInterval({ start: calStart, end: calEnd });
 
   const apptsByDay = useMemo(() => {
     const map: Record<string, Appt[]> = {};
-    appts.forEach(a => {
+    safeAppts.forEach(a => {
       const key = format(safeParseDate(a.starts_at), "yyyy-MM-dd");
       if (!map[key]) map[key] = [];
       map[key].push(a);
     });
     return map;
-  }, [appts]);
+  }, [safeAppts]);
 
   const dayNames = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
 
