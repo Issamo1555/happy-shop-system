@@ -469,6 +469,7 @@ function ApptDialog({ products, clients, prospects, defaultDay, userId, tenantId
   const [time, setTime] = useState("10:00");
   const [duration, setDuration] = useState(60);
   const [status, setStatus] = useState<"scheduled" | "waiting" | "completed">("scheduled");
+  const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState("");
