@@ -44,7 +44,7 @@ const statusColor: Record<Appt["status"], string> = {
   waiting: "bg-orange-100 text-orange-800 border-orange-200",
 };
 const labels: Record<Appt["status"], string> = {
-  scheduled: "Prévu", completed: "Presté (Réalisé)", cancelled: "Annulé", no_show: "Absent", waiting: "En attente",
+  scheduled: "Prévu", completed: "Réalisé", cancelled: "Annulé", no_show: "Absent", waiting: "En attente",
 };
 
 function AgendaPage() {
@@ -76,50 +76,37 @@ function AgendaPage() {
   };
 
   const load = async () => {
-    if (!user?.tenant_id) return;
     let data: any[] = [];
-    try {
-      if (view === "day") {
-        const dayStr = format(day, "yyyy-MM-dd");
-        data = (await getAppointmentsAction({ data: { date: dayStr, tenantId: user.tenant_id } })) as any[];
-      } else {
-        const start = view === "week" ? startOfWeek(day, { weekStartsOn: 1 }) : startOfMonth(day);
-        const end = view === "week" ? endOfWeek(day, { weekStartsOn: 1 }) : endOfMonth(day);
-        data = (await getAppointmentsRangeAction({
-          data: { from: format(start, "yyyy-MM-dd"), to: format(end, "yyyy-MM-dd"), tenantId: user.tenant_id },
-        })) as any[];
-      }
-      setAppts(Array.isArray(data) ? data : []);
-    } catch (e) {
-      console.error("Erreur chargement rendez-vous agenda:", e);
-      setAppts([]);
+    if (view === "day") {
+      const dayStr = format(day, "yyyy-MM-dd");
+      data = await getAppointmentsAction({ data: { date: dayStr, tenantId: user?.tenant_id } }) as any[];
+    } else {
+      const start = view === "week" ? startOfWeek(day, { weekStartsOn: 1 }) : startOfMonth(day);
+      const end = view === "week" ? endOfWeek(day, { weekStartsOn: 1 }) : endOfMonth(day);
+      data = await getAppointmentsRangeAction({ data: { from: format(start, "yyyy-MM-dd"), to: format(end, "yyyy-MM-dd"), tenantId: user?.tenant_id } }) as any[];
     }
+
+    setAppts(data);
   };
 
   useEffect(() => {
-    if (!user?.tenant_id) return;
     (async () => {
-      try {
-        const [pr, cl] = await Promise.all([
-          getProductsAction({ data: { tenantId: user.tenant_id } }),
-          getClientsAction({ data: { tenantId: user.tenant_id } }),
-        ]);
-        setProducts((pr as unknown as Product[]) || []);
-        setClients((cl as unknown as Client[]) || []);
+      const pr = await getProductsAction({ data: { tenantId: user?.tenant_id } });
+      setProducts(pr as unknown as Product[]);
+      const cl = await getClientsAction({ data: { tenantId: user?.tenant_id } });
+      setClients(cl as unknown as Client[]);
 
-        if (user.tenant_id === "system-tenant" && user?.id) {
+      if (user?.tenant_id === 'system-tenant' && user?.id) {
+        try {
           const prs = await getProspectsAction({ data: { userId: user.id } });
-          setProspects((prs as any[]) || []);
+          setProspects(prs || []);
+        } catch (e) {
+          console.error("Error loading prospects for agenda:", e);
         }
-      } catch (e) {
-        console.error("Erreur chargement produits/clients agenda:", e);
       }
     })();
   }, [user?.tenant_id, user?.id]);
-
-  useEffect(() => {
-    load();
-  }, [day, view, user?.tenant_id]);
+  useEffect(() => { load(); }, [day, view, user?.tenant_id]);
 
   const setStatus = async (id: string, s: Appt["status"]) => {
     try {
@@ -206,12 +193,12 @@ function AgendaPage() {
         {/* Edit Dialog */}
         <Dialog open={!!editAppt} onOpenChange={(v) => { if (!v) setEditAppt(null); }}>
           {editAppt && (
-            <EditApptDialog 
-              appt={editAppt} 
-              products={products} 
-              userId={user?.id} 
+            <EditApptDialog
+              appt={editAppt}
+              products={products}
+              userId={user?.id}
               tenantId={user?.tenant_id}
-              onSaved={async () => { await load(); setEditAppt(null); }} 
+              onSaved={async () => { await load(); setEditAppt(null); }}
               onDelete={async () => { await deleteAppt(editAppt.id); setEditAppt(null); }}
             />
           )}
@@ -228,17 +215,16 @@ function AgendaPage() {
 
 /* ============================== DAY VIEW ============================== */
 function DayView({ appts, onStatus, onEdit, onDelete }: { appts: Appt[]; onStatus: (id: string, s: Appt["status"]) => void; onEdit: (a: Appt) => void; onDelete: (id: string) => void }) {
-  const safeAppts = Array.isArray(appts) ? appts : [];
   const grouped = useMemo(() => {
     const map: Record<string, Appt[]> = {};
-    safeAppts.forEach(a => {
+    appts.forEach(a => {
       if (!map[a.starts_at]) map[a.starts_at] = [];
       map[a.starts_at].push(a);
     });
     return Object.keys(map).sort().map(k => map[k]);
-  }, [safeAppts]);
+  }, [appts]);
 
-  if (safeAppts.length === 0) {
+  if (appts.length === 0) {
     return (
       <div className="pos-card p-12 text-center text-muted-foreground">
         <CalendarIcon className="w-10 h-10 mx-auto mb-2 opacity-50" />
@@ -261,34 +247,20 @@ function DayView({ appts, onStatus, onEdit, onDelete }: { appts: Appt[]; onStatu
   );
 }
 
-function safeParseDate(dateStr: string | null | undefined): Date {
-  if (!dateStr) return new Date();
-  try {
-    const isoStr = dateStr.includes('T') ? dateStr : dateStr.replace(' ', 'T');
-    const d = new Date(isoStr);
-    if (isNaN(d.getTime())) return new Date();
-    return d;
-  } catch (e) {
-    return new Date();
-  }
-}
-
 /* ============================== WEEK VIEW ============================== */
 function WeekView({ appts, day, onStatus, onDayClick, onEdit }: { appts: Appt[]; day: Date; onStatus: (id: string, s: Appt["status"]) => void; onDayClick: (d: Date) => void; onEdit: (a: Appt) => void }) {
-  const safeAppts = Array.isArray(appts) ? appts : [];
-  const safeDay = (day && !isNaN(new Date(day).getTime())) ? new Date(day) : new Date();
-  const weekStart = startOfWeek(safeDay, { weekStartsOn: 1 });
-  const days = eachDayOfInterval({ start: weekStart, end: endOfWeek(safeDay, { weekStartsOn: 1 }) });
+  const weekStart = startOfWeek(day, { weekStartsOn: 1 });
+  const days = eachDayOfInterval({ start: weekStart, end: endOfWeek(day, { weekStartsOn: 1 }) });
 
   const apptsByDay = useMemo(() => {
     const map: Record<string, Appt[]> = {};
     days.forEach(d => { map[format(d, "yyyy-MM-dd")] = []; });
-    safeAppts.forEach(a => {
-      const key = format(safeParseDate(a.starts_at), "yyyy-MM-dd");
+    appts.forEach(a => {
+      const key = format(parseISO(a.starts_at), "yyyy-MM-dd");
       if (map[key]) map[key].push(a);
     });
     return map;
-  }, [safeAppts, days]);
+  }, [appts, days]);
 
   return (
     <div className="grid grid-cols-7 gap-1" style={{ minHeight: "60vh" }}>
@@ -333,13 +305,12 @@ function WeekView({ appts, day, onStatus, onDayClick, onEdit }: { appts: Appt[];
 }
 
 function WeekApptCard({ appt, onEdit }: { appt: Appt; onEdit: (a: Appt) => void }) {
-  const start = safeParseDate(appt.starts_at);
-  const statusKey: Appt["status"] = (appt.status && statusColor[appt.status]) ? appt.status : "scheduled";
+  const start = parseISO(appt.starts_at);
   return (
-    <div 
-      onClick={() => onEdit(appt)} 
+    <div
+      onClick={() => onEdit(appt)}
       title={`${format(start, "HH:mm")} - ${appt.client_name}\n${appt.service_name}`}
-      className={`rounded-md p-1 text-[10px] leading-tight border cursor-pointer transition-all hover:shadow-md ${statusColor[statusKey]}`}
+      className={`rounded-md p-1 text-[10px] leading-tight border cursor-pointer transition-all hover:shadow-md ${statusColor[appt.status]}`}
     >
       <p className="font-semibold break-words">{format(start, "HH:mm")} <br className="hidden sm:block" />{appt.client_name}</p>
       <p className="break-words opacity-80 mt-0.5">{appt.service_name}</p>
@@ -349,23 +320,21 @@ function WeekApptCard({ appt, onEdit }: { appt: Appt; onEdit: (a: Appt) => void 
 
 /* ============================== MONTH VIEW ============================== */
 function MonthView({ appts, day, onDayClick }: { appts: Appt[]; day: Date; onDayClick: (d: Date) => void }) {
-  const safeAppts = Array.isArray(appts) ? appts : [];
-  const safeDay = (day && !isNaN(new Date(day).getTime())) ? new Date(day) : new Date();
-  const monthStart = startOfMonth(safeDay);
-  const monthEnd = endOfMonth(safeDay);
+  const monthStart = startOfMonth(day);
+  const monthEnd = endOfMonth(day);
   const calStart = startOfWeek(monthStart, { weekStartsOn: 1 });
   const calEnd = endOfWeek(monthEnd, { weekStartsOn: 1 });
   const allDays = eachDayOfInterval({ start: calStart, end: calEnd });
 
   const apptsByDay = useMemo(() => {
     const map: Record<string, Appt[]> = {};
-    safeAppts.forEach(a => {
-      const key = format(safeParseDate(a.starts_at), "yyyy-MM-dd");
+    appts.forEach(a => {
+      const key = format(parseISO(a.starts_at), "yyyy-MM-dd");
       if (!map[key]) map[key] = [];
       map[key].push(a);
     });
     return map;
-  }, [safeAppts]);
+  }, [appts]);
 
   const dayNames = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
 
@@ -389,14 +358,11 @@ function MonthView({ appts, day, onDayClick }: { appts: Appt[]; day: Date; onDay
                 {format(d, "d")}
               </p>
               <div className="space-y-0.5">
-                {dayAppts.slice(0, 3).map(a => {
-                  const sKey: Appt["status"] = (a.status && statusColor[a.status]) ? a.status : "scheduled";
-                  return (
-                    <div key={a.id} className={`text-[10px] px-1 py-0.5 rounded truncate border ${statusColor[sKey]}`}>
-                      {format(safeParseDate(a.starts_at), "HH:mm")} {a.client_name}
-                    </div>
-                  );
-                })}
+                {dayAppts.slice(0, 3).map(a => (
+                  <div key={a.id} className={`text-[10px] px-1 py-0.5 rounded truncate border ${statusColor[a.status]}`}>
+                    {format(parseISO(a.starts_at), "HH:mm")} {a.client_name}
+                  </div>
+                ))}
                 {dayAppts.length > 3 && (
                   <p className="text-[10px] text-primary font-medium">+{dayAppts.length - 3} de plus</p>
                 )}
@@ -411,7 +377,7 @@ function MonthView({ appts, day, onDayClick }: { appts: Appt[]; day: Date; onDay
 
 /* ============================== APPOINTMENT ROW (Day View) ============================== */
 function ApptRow({ appt, onStatus, onEdit, onDelete }: { appt: Appt; onStatus: (id: string, s: Appt["status"]) => void; onEdit: (a: Appt) => void; onDelete: (id: string) => void }) {
-  const start = safeParseDate(appt.starts_at);
+  const start = parseISO(appt.starts_at);
   return (
     <div className="pos-card p-4 flex flex-wrap items-center gap-4 h-full">
       <div className="flex-1 min-w-[200px] flex items-center gap-4 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => onEdit(appt)}>
@@ -433,24 +399,16 @@ function ApptRow({ appt, onStatus, onEdit, onDelete }: { appt: Appt; onStatus: (
           )}
         </div>
       </div>
-      {(() => {
-        const statusKey: Appt["status"] = (appt.status && statusColor[appt.status]) ? appt.status : "scheduled";
-        return (
-          <>
-            <Badge className={statusColor[statusKey]}>{labels[statusKey]}</Badge>
-            <Select value={statusKey} onValueChange={(v) => onStatus(appt.id, v as Appt["status"])}>
-              <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="scheduled">Prévu</SelectItem>
-                <SelectItem value="waiting">En attente</SelectItem>
-                <SelectItem value="completed">Presté (Réalisé)</SelectItem>
-                <SelectItem value="cancelled">Annulé</SelectItem>
-                <SelectItem value="no_show">Absent</SelectItem>
-              </SelectContent>
-            </Select>
-          </>
-        );
-      })()}
+      <Badge className={statusColor[appt.status]}>{labels[appt.status]}</Badge>
+      <Select value={appt.status} onValueChange={(v) => onStatus(appt.id, v as Appt["status"])}>
+        <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+        <SelectContent>
+          <SelectItem value="scheduled">Prévu</SelectItem>
+          <SelectItem value="completed">Réalisé</SelectItem>
+          <SelectItem value="cancelled">Annulé</SelectItem>
+          <SelectItem value="no_show">Absent</SelectItem>
+        </SelectContent>
+      </Select>
       <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive hover:bg-destructive/10" onClick={(e) => { e.stopPropagation(); onDelete(appt.id); }}>
         <Trash2 className="w-4 h-4" />
       </Button>
@@ -468,7 +426,6 @@ function ApptDialog({ products, clients, prospects, defaultDay, userId, tenantId
   const [date, setDate] = useState(format(defaultDay, "yyyy-MM-dd"));
   const [time, setTime] = useState("10:00");
   const [duration, setDuration] = useState(60);
-  const [status, setStatus] = useState<"scheduled" | "waiting" | "completed">("scheduled");
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -485,7 +442,7 @@ function ApptDialog({ products, clients, prospects, defaultDay, userId, tenantId
   const filteredProspects = useMemo(() => {
     if (!searchQuery) return prospects;
     const q = searchQuery.toLowerCase();
-    return prospects.filter((p) => 
+    return prospects.filter((p) =>
       (p.name || "").toLowerCase().includes(q) ||
       (p.city || "").toLowerCase().includes(q) ||
       (p.phone || "").toLowerCase().includes(q)
@@ -495,11 +452,11 @@ function ApptDialog({ products, clients, prospects, defaultDay, userId, tenantId
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (submitting) return;
-    
+
     const product = products.find((p) => p.id === productId);
     const client = clients.find((c) => c.id === clientId);
     const prospect = prospects.find((p) => p.id === clientId);
-    
+
     let clientName = manualName;
     if (client) {
       clientName = `${client.first_name} ${client.last_name ?? ""}`.trim();
@@ -524,7 +481,6 @@ function ApptDialog({ products, clients, prospects, defaultDay, userId, tenantId
           duration_min: duration,
           notes: notes || null,
           created_by: userId ?? null,
-          status: status,
         }
       });
       toast.success(isSystem ? "Rendez-vous de démo créé" : "Rendez-vous créé");
@@ -594,7 +550,7 @@ function ApptDialog({ products, clients, prospects, defaultDay, userId, tenantId
               )}
             </div>
           ) : (
-            <Select value={clientId || "__none"} onValueChange={(v) => setClientId(v === "__none" ? "" : v)}>
+            <Select value={clientId} onValueChange={(v) => setClientId(v === "__none" ? "" : v)}>
               <SelectTrigger><SelectValue placeholder="Sélectionner..." /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="__none">Saisir manuellement</SelectItem>
@@ -613,10 +569,9 @@ function ApptDialog({ products, clients, prospects, defaultDay, userId, tenantId
         )}
         <div>
           <Label>{isSystem ? "Démonstration" : "Prestation"}</Label>
-          <Select value={productId || "__none"} onValueChange={(v) => setProductId(v === "__none" ? "" : v)}>
+          <Select value={productId} onValueChange={setProductId}>
             <SelectTrigger><SelectValue placeholder="Choisir..." /></SelectTrigger>
             <SelectContent className="max-h-[300px]">
-              <SelectItem value="__none">Choisir une prestation...</SelectItem>
               {products.map((p) => (
                 <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
               ))}
@@ -627,17 +582,6 @@ function ApptDialog({ products, clients, prospects, defaultDay, userId, tenantId
           <div><Label>Date</Label><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} required /></div>
           <div><Label>Heure</Label><Input type="time" value={time} onChange={(e) => setTime(e.target.value)} required /></div>
           <div><Label>Durée (min)</Label><Input type="number" min={15} step={15} value={duration} onChange={(e) => setDuration(Number(e.target.value) || 60)} /></div>
-        </div>
-        <div>
-          <Label>Statut Initial</Label>
-          <Select value={status} onValueChange={(v) => setStatus(v as any)}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="scheduled">🔵 Prévu (Agenda)</SelectItem>
-              <SelectItem value="waiting">🟧 En attente (Salle d'Attente)</SelectItem>
-              <SelectItem value="completed">🟢 Presté (Réalisé)</SelectItem>
-            </SelectContent>
-          </Select>
         </div>
         <div><Label>Notes</Label><Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} /></div>
         <DialogFooter>
@@ -656,7 +600,7 @@ function EditApptDialog({ appt, products, userId, tenantId, onSaved, onDelete }:
 }) {
   const [clientName, setClientName] = useState(appt.client_name);
   const [serviceName, setServiceName] = useState(appt.service_name);
-  const startDate = safeParseDate(appt.starts_at);
+  const startDate = parseISO(appt.starts_at);
   const [date, setDate] = useState(format(startDate, "yyyy-MM-dd"));
   const [time, setTime] = useState(format(startDate, "HH:mm"));
   const [duration, setDuration] = useState(appt.duration_min);

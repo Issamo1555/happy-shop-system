@@ -45,7 +45,7 @@ const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
 const checkRateLimit = (email: string) => {
   const now = Date.now();
   const record = loginAttempts.get(email);
-  
+
   if (record) {
     // Reset if lockout period has passed
     if (now - record.lastAttempt > LOCKOUT_DURATION_MS) {
@@ -204,51 +204,51 @@ export const getTenantUsersAction = createServerFn({ method: "GET" })
 export const createTenantUserAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: { email: string, password: string, fullName: string, role: string, userId: string, tenantId?: string } }) => {
     const admin = await checkAdmin(data.userId);
-    
+
     // Determine target tenant
     let targetTenantId = admin.tenant_id;
     if (data.tenantId && admin.role === "super_admin") {
       // Super admin can assign users to any tenant
       targetTenantId = data.tenantId;
     }
-    
+
     // Validate role
     const allowedRoles = ["cashier", "sales"];
     if (!allowedRoles.includes(data.role)) {
       throw new Error("Rôle invalide. Choisissez 'cashier' ou 'sales'.");
     }
-    
+
     // Validate password
     if (!data.password || data.password.length < 6) {
       throw new Error("Le mot de passe doit contenir au moins 6 caractères.");
     }
-    
+
     // Check email uniqueness
     const existing = await db.prepare("SELECT id FROM users WHERE email = ?").get(data.email) as any;
     if (existing) {
       throw new Error("Cet email est déjà utilisé par un autre compte.");
     }
-    
+
     const id = crypto.randomUUID();
     const hashedPassword = bcrypt.hashSync(data.password, 10);
     await db.prepare(`
       INSERT INTO users (id, email, password, full_name, role, tenant_id)
       VALUES (?, ?, ?, ?, ?, ?)
     `).run(id, data.email, hashedPassword, data.fullName, data.role, targetTenantId);
-    
+
     return { success: true, id, email: data.email, fullName: data.fullName, role: data.role };
   });
 
 export const updateUserRoleAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: { targetUserId: string, newRole: string, userId: string } }) => {
     const admin = await checkAdmin(data.userId);
-    
+
     // Validate role
     const allowedRoles = ["cashier", "sales", "admin"];
     if (!allowedRoles.includes(data.newRole)) {
       throw new Error("Rôle invalide.");
     }
-    
+
     // Verify target user belongs to same tenant
     const targetUser = await db.prepare("SELECT id, role, tenant_id FROM users WHERE id = ?").get(data.targetUserId) as any;
     if (!targetUser) throw new Error("Utilisateur introuvable.");
@@ -256,7 +256,7 @@ export const updateUserRoleAction = createServerFn({ method: "POST" })
     if (admin.role !== "super_admin" && targetUser.tenant_id !== admin.tenant_id) {
       throw new Error("Accès refusé : cet utilisateur n'appartient pas à votre établissement.");
     }
-    
+
     await db.prepare("UPDATE users SET role = ? WHERE id = ?").run(data.newRole, data.targetUserId);
     return { success: true };
   });
@@ -264,10 +264,10 @@ export const updateUserRoleAction = createServerFn({ method: "POST" })
 export const deleteTenantUserAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: { targetUserId: string, userId: string } }) => {
     const admin = await checkAdmin(data.userId);
-    
+
     // Prevent deleting yourself
     if (data.targetUserId === data.userId) throw new Error("Impossible de supprimer votre propre compte.");
-    
+
     // Verify target user belongs to same tenant (unless super admin)
     const targetUser = await db.prepare("SELECT id, role, tenant_id FROM users WHERE id = ?").get(data.targetUserId) as any;
     if (!targetUser) throw new Error("Utilisateur introuvable.");
@@ -275,7 +275,7 @@ export const deleteTenantUserAction = createServerFn({ method: "POST" })
     if (admin.role !== "super_admin" && targetUser.tenant_id !== admin.tenant_id) {
       throw new Error("Accès refusé : cet utilisateur n'appartient pas à votre établissement.");
     }
-    
+
     await db.prepare("DELETE FROM users WHERE id = ?").run(data.targetUserId);
     return { success: true };
   });
@@ -345,7 +345,7 @@ export const updateTenantSubscriptionAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: { tenantId: string, planId: string, endDate: string, enabledModules: string[], userId: string } }) => {
     await checkSuperAdmin(data.userId);
     await db.execute(
-      "UPDATE tenants SET subscription_plan_id = ?, subscription_end_date = ?, enabled_modules = ? WHERE id = ?", 
+      "UPDATE tenants SET subscription_plan_id = ?, subscription_end_date = ?, enabled_modules = ? WHERE id = ?",
       [data.planId, data.endDate, JSON.stringify(data.enabledModules), data.tenantId]
     );
     return { success: true };
@@ -370,7 +370,7 @@ export const getProductsAction = createServerFn({ method: "GET" })
 
         if (medicalCount > 0 || demoCount === 0) {
           console.log("🌱 Dynamic conversion: seeding SaaS products for system-tenant...");
-          
+
           // Soft-delete legacy items
           db.prepare("UPDATE products SET deleted = 1 WHERE tenant_id = 'system-tenant'").run();
           db.prepare("UPDATE categories SET active = 0 WHERE tenant_id = 'system-tenant'").run();
@@ -497,8 +497,8 @@ export const deleteCategoryAction = createServerFn({ method: "POST" })
     const admin = await checkAdmin(data.adminId);
     const category = await db.prepare("SELECT slug FROM categories WHERE id = ? AND tenant_id = ?").get(data.id, admin.tenant_id) as any;
     if (category) {
-       const product = await db.prepare("SELECT id FROM products WHERE category = ? AND tenant_id = ? LIMIT 1").get(category.slug, admin.tenant_id) as any;
-       if (product) throw new Error("Impossible de supprimer une catégorie utilisée par des produits.");
+      const product = await db.prepare("SELECT id FROM products WHERE category = ? AND tenant_id = ? LIMIT 1").get(category.slug, admin.tenant_id) as any;
+      if (product) throw new Error("Impossible de supprimer une catégorie utilisée par des produits.");
     }
     await db.prepare("DELETE FROM categories WHERE id = ? AND tenant_id = ?").run(data.id, admin.tenant_id);
     return { success: true };
@@ -512,16 +512,16 @@ export const getSettingsAction = createServerFn({ method: "GET" })
     const tenantId = data?.tenantId || "default-tenant";
     const rows = await db.prepare("SELECT * FROM settings WHERE tenant_id = ?").all(tenantId) as any[];
     const result = Object.fromEntries(rows.map(r => [r.key, r.value]));
-    
+
     // Fallback for default-tenant settings in settings page
     if (tenantId === 'default-tenant' || tenantId === 'system-tenant') {
       const { readFileSync } = await import("fs");
       const { join } = await import("path");
-      
+
       let clientEmail = process.env.GOOGLE_CLIENT_EMAIL || "";
       let privateKey = process.env.GOOGLE_PRIVATE_KEY || "";
       let calendarId = process.env.GOOGLE_CALENDAR_ID || "";
-      
+
       try {
         const envPath = join(process.cwd(), ".env");
         const content = readFileSync(envPath, "utf8");
@@ -538,7 +538,7 @@ export const getSettingsAction = createServerFn({ method: "GET" })
             if (key === 'GOOGLE_CALENDAR_ID') calendarId = value;
           }
         });
-      } catch {}
+      } catch { }
 
       if (!result.google_calendar_id) result.google_calendar_id = calendarId;
       if (!result.google_client_email) result.google_client_email = clientEmail;
@@ -593,7 +593,7 @@ export const createClientAction = createServerFn({ method: "POST" })
       const existing = await db.prepare(
         "SELECT id, first_name, last_name FROM clients WHERE (phone = ? OR email = ?) AND tenant_id = ? AND deleted = 0 LIMIT 1"
       ).get(p, e, user.tenant_id) as any;
-      
+
       if (existing) {
         throw new Error(`Un client existe déjà avec ce téléphone ou e-mail (${existing.first_name} ${existing.last_name}).`);
       }
@@ -605,8 +605,8 @@ export const createClientAction = createServerFn({ method: "POST" })
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     await stmt.run(
-      id, data.first_name, data.last_name, data.phone, data.email, 
-      data.is_member ? 1 : 0, data.children_count, data.notes, 
+      id, data.first_name, data.last_name, data.phone, data.email,
+      data.is_member ? 1 : 0, data.children_count, data.notes,
       data.active !== false ? 1 : 0, data.type || 'b2c',
       data.company_name, data.company_ice, data.company_if, data.company_address,
       user.tenant_id
@@ -625,7 +625,7 @@ export const updateClientAction = createServerFn({ method: "POST" })
       const existing = await db.prepare(
         "SELECT id, first_name, last_name FROM clients WHERE (phone = ? OR email = ?) AND id != ? AND tenant_id = ? AND deleted = 0 LIMIT 1"
       ).get(p, e, id, user.tenant_id) as any;
-      
+
       if (existing) {
         throw new Error(`Un client existe déjà avec ce téléphone ou e-mail (${existing.first_name} ${existing.last_name}).`);
       }
@@ -664,7 +664,7 @@ export const getClientPacksAction = createServerFn({ method: "GET" })
       WHERE cp.client_id = ? AND cp.tenant_id = ?
       ORDER BY cp.purchased_at DESC
     `).all(clientId, tenantId);
-    
+
     for (const pack of packs) {
       pack.consumptions = await db.prepare("SELECT * FROM pack_consumptions WHERE pack_id = ? ORDER BY consumed_at ASC").all(pack.id);
     }
@@ -677,7 +677,7 @@ export const consumePackSessionAction = createServerFn({ method: "POST" })
     const transaction = db.transaction(async () => {
       const pack = await db.prepare("SELECT sessions_remaining FROM client_packs WHERE id = ? AND tenant_id = ?").get(data.packId, user.tenant_id);
       if (!pack || pack.sessions_remaining <= 0) throw new Error("Pack épuisé");
-      
+
       await db.prepare("UPDATE client_packs SET sessions_remaining = sessions_remaining - 1 WHERE id = ? AND tenant_id = ?").run(data.packId, user.tenant_id);
       await db.prepare("INSERT INTO pack_consumptions (id, pack_id, consumed_at, tenant_id) VALUES (?, ?, ?, ?)")
         .run(crypto.randomUUID(), data.packId, data.date, user.tenant_id);
@@ -719,13 +719,13 @@ export const getAppointmentsRangeAction = createServerFn({ method: "GET" })
 async function getGoogleConfig(tenantId: string) {
   const rows = await db.prepare("SELECT `key`, value FROM settings WHERE `key` LIKE 'google_%' AND tenant_id = ?").all(tenantId) as any[];
   const s = Object.fromEntries(rows.map(r => [r.key, r.value]));
-  
+
   const isDefault = tenantId === 'default-tenant' || tenantId === 'system-tenant';
-  
+
   let clientEmail = s.google_client_email || (isDefault ? undefined : "");
   let privateKey = s.google_private_key || (isDefault ? undefined : "");
   let calendarId = s.google_calendar_id || (isDefault ? undefined : "");
-  
+
   if (privateKey && !privateKey.includes("PRIVATE KEY")) {
     try {
       privateKey = Buffer.from(privateKey, 'base64').toString('utf8');
@@ -752,13 +752,12 @@ export const createAppointmentAction = createServerFn({ method: "POST" })
     const endsAt = endDate.toISOString().replace('.000Z', '').replace('Z', '');
 
     const createdAt = data.created_at || new Date().toLocaleString('sv-SE').replace(' ', 'T');
-    
-    const status = data.status || "scheduled";
+
     const stmt = db.prepare(`
-      INSERT INTO appointments (id, client_id, client_name, product_id, service_name, starts_at, duration_min, notes, created_by, google_event_id, created_at, tenant_id, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO appointments (id, client_id, client_name, product_id, service_name, starts_at, duration_min, notes, created_by, google_event_id, created_at, tenant_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    
+
 
     // Sync to Google Calendar
     const googleConfig = await getGoogleConfig(user.tenant_id);
@@ -771,26 +770,26 @@ export const createAppointmentAction = createServerFn({ method: "POST" })
       notes: data.notes
     }, googleConfig);
 
-    await stmt.run(id, data.client_id, data.client_name, data.product_id, data.service_name, startsAt, data.duration_min, data.notes, data.created_by, googleEventId, createdAt, user.tenant_id, status);
+    await stmt.run(id, data.client_id, data.client_name, data.product_id, data.service_name, startsAt, data.duration_min, data.notes, data.created_by, googleEventId, createdAt, user.tenant_id);
     return { success: true, id, googleEventId };
   });
 
 export const updateAppointmentStatusAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: { id: string, status: string, userId: string } }) => {
     const user = await checkAuth(data.userId);
-    
+
     const appt = await db.prepare("SELECT * FROM appointments WHERE id = ? AND tenant_id = ?").get(data.id, user.tenant_id) as any;
     if (!appt) throw new Error("Rendez-vous introuvable");
 
     await db.prepare("UPDATE appointments SET status = ? WHERE id = ? AND tenant_id = ?").run(data.status, data.id, user.tenant_id);
-    
+
     // If cancelled or no-show, remove from Google Calendar
     if ((data.status === "cancelled" || data.status === "no_show") && appt.google_event_id) {
       const googleConfig = await getGoogleConfig(user.tenant_id);
       await deleteEventFromGoogle(appt.google_event_id, googleConfig);
       await db.prepare("UPDATE appointments SET google_event_id = NULL WHERE id = ? AND tenant_id = ?").run(data.id, user.tenant_id);
-    } 
-    
+    }
+
     return { success: true };
   });
 
@@ -823,7 +822,7 @@ export const updateAppointmentAction = createServerFn({ method: "POST" })
     try {
       // Use userId if available, otherwise fall back to default tenant
       const tenantId = data.userId ? (await checkAuth(data.userId)).tenant_id : "default-tenant";
-      
+
       const appt = await db.prepare("SELECT * FROM appointments WHERE id = ? AND tenant_id = ?").get(data.id, tenantId) as any;
       if (!appt) throw new Error("Rendez-vous introuvable");
 
@@ -844,7 +843,7 @@ export const updateAppointmentAction = createServerFn({ method: "POST" })
           notes: data.notes,
           google_event_id: appt.google_event_id,
         }, googleConfig);
-        
+
         if (newGoogleId && newGoogleId !== appt.google_event_id) {
           await db.prepare("UPDATE appointments SET google_event_id = ? WHERE id = ? AND tenant_id = ?").run(newGoogleId, data.id, tenantId);
         }
@@ -861,12 +860,12 @@ export const deleteAppointmentAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: { id: string, userId: string } }) => {
     const user = await checkAuth(data.userId);
     const appt = await db.prepare("SELECT google_event_id FROM appointments WHERE id = ? AND tenant_id = ?").get(data.id, user.tenant_id) as any;
-    
+
     if (appt?.google_event_id) {
       const googleConfig = await getGoogleConfig(user.tenant_id);
       await deleteEventFromGoogle(appt.google_event_id, googleConfig);
     }
-    
+
     await db.prepare("DELETE FROM appointments WHERE id = ? AND tenant_id = ?").run(data.id, user.tenant_id);
     return { success: true };
   });
@@ -881,33 +880,33 @@ export const saveSaleAction = createServerFn({ method: "POST" })
     const saleId = sale.id || crypto.randomUUID();
     const createdAt = sale.created_at || new Date().toLocaleString('sv-SE').replace(' ', 'T');
     console.log("Saving sale:", saleId, sale, items);
-    
+
     try {
       const transaction = db.transaction(async () => {
-      await db.prepare(`
+        await db.prepare(`
         INSERT INTO sales (id, cashier_id, client_id, subtotal, discount, discount_reason, total, payment_method, note, payment_image, created_at, tenant_id)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(saleId, sale.cashier_id, sale.client_id, sale.subtotal, sale.discount, sale.discount_reason, sale.total, sale.payment_method, sale.note, sale.payment_image, createdAt, user.tenant_id);
 
-      const itemStmt = db.prepare(`
+        const itemStmt = db.prepare(`
         INSERT INTO sale_items (id, sale_id, product_id, product_name, unit_price, quantity, line_total, tenant_id)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `);
-      for (const item of items) {
-        const itemId = item.id || crypto.randomUUID();
-        await itemStmt.run(itemId, saleId, item.product_id, item.product_name, item.unit_price, item.quantity, item.line_total, user.tenant_id);
+        for (const item of items) {
+          const itemId = item.id || crypto.randomUUID();
+          await itemStmt.run(itemId, saleId, item.product_id, item.product_name, item.unit_price, item.quantity, item.line_total, user.tenant_id);
 
-        if (item.pack_sessions && item.pack_sessions > 0 && sale.client_id) {
-          for (let i = 0; i < item.quantity; i++) {
-            const packId = crypto.randomUUID();
-            await db.prepare(`
+          if (item.pack_sessions && item.pack_sessions > 0 && sale.client_id) {
+            for (let i = 0; i < item.quantity; i++) {
+              const packId = crypto.randomUUID();
+              await db.prepare(`
               INSERT INTO client_packs (id, client_id, product_id, sessions_total, sessions_remaining, purchased_at, tenant_id)
               VALUES (?, ?, ?, ?, ?, ?, ?)
             `).run(packId, sale.client_id, item.product_id, item.pack_sessions, item.pack_sessions, createdAt, user.tenant_id);
+            }
           }
         }
-      }
-    });
+      });
       await transaction();
       return { success: true, id: saleId };
     } catch (err: any) {
@@ -971,19 +970,19 @@ export const getClientSalesAction = createServerFn({ method: "GET" })
 export const downloadDatabaseAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: { adminId: string } }) => {
     await checkAdmin(data.adminId);
-    
+
     if (process.env.MYSQL_HOST) {
       const tables = await db.getTables();
       let sqlDump = "-- MySQL Dump\n";
       sqlDump += `SET FOREIGN_KEY_CHECKS = 0;\n\n`;
-      
+
       for (const table of tables) {
         const rows = await db.query(`SELECT * FROM \`${table}\``);
         if (rows.length === 0) continue;
-        
+
         sqlDump += `\n-- Table: ${table}\n`;
         sqlDump += `TRUNCATE TABLE \`${table}\`;\n`;
-        
+
         for (const row of rows) {
           const keys = Object.keys(row).map(k => `\`${k}\``).join(', ');
           const values = Object.values(row).map(v => {
@@ -996,7 +995,7 @@ export const downloadDatabaseAction = createServerFn({ method: "POST" })
         }
       }
       sqlDump += `\nSET FOREIGN_KEY_CHECKS = 1;\n`;
-      
+
       return {
         content: Buffer.from(sqlDump).toString("base64"),
         filename: `pos_backup_${new Date().toISOString().split("T")[0]}.sql`
@@ -1080,17 +1079,17 @@ export const loginAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: any }) => {
     const { email, password, ip = "Inconnue", userAgent = "Inconnu" } = data;
     const deviceDetails = `[IP: ${ip}] [Appareil: ${userAgent.substring(0, 50)}...]`;
-    
+
     // Rate limiting check
     checkRateLimit(email);
-    
+
     const user = await db.prepare("SELECT * FROM users WHERE email = ?").get(email) as any;
     if (!user) {
       recordFailedLogin(email);
       logAccess(email, "FAILED", `Unknown user - ${deviceDetails}`);
       throw new Error("Email ou mot de passe incorrect");
     }
-    
+
     // Compare with hashed password
     const isValid = bcrypt.compareSync(password, user.password);
     if (!isValid) {
@@ -1119,7 +1118,7 @@ export const loginAction = createServerFn({ method: "POST" })
       user.subscription_end_date = null;
       user.payment_proof_url = null;
     }
-    
+
     // Success: reset attempts and return user (without password)
     resetLoginAttempts(email);
     logAccess(email, "SUCCESS", `Role: ${user.role}, Tenant: ${user.tenant_id} - ${deviceDetails}`);
@@ -1134,10 +1133,10 @@ export const getAccessLogsAction = createServerFn({ method: "GET" })
     try {
       const logFile = join(process.cwd(), 'data', 'access.log');
       if (!existsSync(logFile)) return [];
-      
+
       const content = readFileSync(logFile, 'utf-8');
       const lines = content.split('\n').filter((l: string) => l.trim().length > 0);
-      
+
       // Parse the lines into structured objects
       // Format: [2026-07-26T10:25:12.000Z] SUCCESS - Email: stagiaire@posrdv.com - Role: sales, Tenant: system-tenant - [IP: 1.2.3.4] [Appareil: Mozilla...]
       return lines.reverse().slice(0, 1000).map((line: string, index: number) => {
@@ -1162,7 +1161,7 @@ export const getAccessLogsAction = createServerFn({ method: "GET" })
 export const signUpAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: any }) => {
     const { email, password, fullName, inviteCode } = data;
-    
+
     // Find the tenant by invite code
     let tenantId = "default-tenant";
     if (inviteCode) {
@@ -1176,16 +1175,16 @@ export const signUpAction = createServerFn({ method: "POST" })
         }
       }
     }
-    
+
     // Check if email already exists
     const existing = await db.prepare("SELECT id FROM users WHERE email = ?").get(email) as any;
     if (existing) {
       throw new Error("Cet email est déjà utilisé");
     }
-    
+
     // Hash the password before storing
     const hashedPassword = bcrypt.hashSync(password, 10);
-    
+
     const id = crypto.randomUUID();
     const role = "cashier";
     await db.prepare(`
@@ -1226,21 +1225,21 @@ export const validateSessionAction = createServerFn({ method: "POST" })
 export const resetPasswordAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: any }) => {
     const { email, inviteCode, newPassword } = data;
-    
+
     // Check invite code against tenant codes or hardcoded
     const tenant = await db.queryOne("SELECT id FROM tenants WHERE invite_code = ?", [inviteCode]);
     if (!tenant && inviteCode !== "MUMS2026") {
       throw new Error("Code d'invitation invalide.");
     }
-    
+
     const user = await db.prepare("SELECT id FROM users WHERE email = ?").get(email) as any;
     if (!user) {
       throw new Error("Aucun utilisateur trouvé avec cet email.");
     }
-    
+
     const hashedPassword = bcrypt.hashSync(newPassword, 10);
     await db.prepare("UPDATE users SET password = ? WHERE id = ?").run(hashedPassword, user.id);
-    
+
     return { success: true };
   });
 
@@ -1248,19 +1247,19 @@ export const updateUserProfileAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: any }) => {
     const { userId, email, full_name, avatar_url } = data;
     await checkAuth(userId);
-    
+
     if (email) {
       const existing = await db.prepare("SELECT id FROM users WHERE email = ? AND id != ?").get(email, userId) as any;
       if (existing) {
         throw new Error("Cet email est déjà utilisé par un autre compte.");
       }
     }
-    
+
     await db.prepare("UPDATE users SET email = ?, full_name = ?, avatar_url = ? WHERE id = ?")
       .run(email, full_name, avatar_url, userId);
-    
+
     const updated = await db.prepare("SELECT id, email, full_name, role, avatar_url, created_at, tenant_id FROM users WHERE id = ?").get(userId) as any;
-    
+
     // Attach tenant info
     if (updated.tenant_id) {
       const tenant = await db.queryOne("SELECT name, slug, logo_url, primary_color FROM tenants WHERE id = ?", [updated.tenant_id]);
@@ -1271,7 +1270,7 @@ export const updateUserProfileAction = createServerFn({ method: "POST" })
         updated.tenant_color = tenant.primary_color;
       }
     }
-    
+
     return updated;
   });
 
@@ -1286,18 +1285,18 @@ export const uploadAvatarAction = createServerFn({ method: "POST" })
     // Remove prefix like "data:image/png;base64,"
     const base64Data = base64.replace(/^data:image\/\w+;base64,/, "");
     const buffer = Buffer.from(base64Data, 'base64');
-    
+
     const extension = filename.split('.').pop() || 'png';
     const newFilename = `${userId}_${Date.now()}.${extension}`;
     const filePath = join(process.cwd(), "public", "uploads", "avatars", newFilename);
-    
+
     writeFileSync(filePath, buffer);
-    
+
     const publicUrl = `/uploads/avatars/${newFilename}`;
     await db.prepare("UPDATE users SET avatar_url = ? WHERE id = ?").run(publicUrl, userId);
-    
+
     const updated = await db.prepare("SELECT id, email, full_name, role, avatar_url, created_at, tenant_id FROM users WHERE id = ?").get(userId) as any;
-    
+
     // Attach tenant info
     if (updated.tenant_id) {
       const tenant = await db.queryOne("SELECT name, slug, logo_url, primary_color FROM tenants WHERE id = ?", [updated.tenant_id]);
@@ -1308,7 +1307,7 @@ export const uploadAvatarAction = createServerFn({ method: "POST" })
         updated.tenant_color = tenant.primary_color;
       }
     }
-    
+
     return updated;
   });
 
@@ -1362,7 +1361,7 @@ export const uploadTicketImageAction = createServerFn({ method: "POST" })
 
     const base64Data = base64.replace(/^data:image\/\w+;base64,/, "");
     const buffer = Buffer.from(base64Data, 'base64');
-    
+
     const extension = filename.split('.').pop() || 'png';
     const newFilename = `ticket_${userId}_${Date.now()}.${extension}`;
     const dirPath = join(process.cwd(), "public", "uploads", "tickets");
@@ -1371,15 +1370,15 @@ export const uploadTicketImageAction = createServerFn({ method: "POST" })
     }
     const filePath = join(dirPath, newFilename);
     writeFileSync(filePath, buffer);
-    
+
     // Also write to data folder (persisted Docker volume in prod)
     const dataDir = join(process.cwd(), "data", "uploads", "tickets");
     if (!existsSync(dataDir)) {
-      try { mkdirSync(dataDir, { recursive: true }); } catch(e) {}
+      try { mkdirSync(dataDir, { recursive: true }); } catch (e) { }
     }
     const dataPath = join(dataDir, newFilename);
-    try { writeFileSync(dataPath, buffer); } catch(e) {}
-    
+    try { writeFileSync(dataPath, buffer); } catch (e) { }
+
     const publicUrl = `/uploads/tickets/${newFilename}`;
     return { success: true, url: publicUrl };
   });
@@ -1390,7 +1389,7 @@ export const uploadTicketImageAction = createServerFn({ method: "POST" })
 export const seedTenantDataAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: { tenantId: string, prefix: string, adminId: string } }) => {
     await checkSuperAdmin(data.adminId);
-    
+
     const { tenantId, prefix } = data;
     const px = prefix ? `${prefix} ` : "";
 
@@ -1398,11 +1397,11 @@ export const seedTenantDataAction = createServerFn({ method: "POST" })
     const cat1Id = crypto.randomUUID();
     const cat2Id = crypto.randomUUID();
     const cat3Id = crypto.randomUUID();
-    await db.execute("INSERT INTO categories (id, name, slug, sort_order, active, image_url, tenant_id) VALUES (?, ?, ?, ?, 1, '/uploads/cat_consultation.png', ?)", 
+    await db.execute("INSERT INTO categories (id, name, slug, sort_order, active, image_url, tenant_id) VALUES (?, ?, ?, ?, 1, '/uploads/cat_consultation.png', ?)",
       [cat1Id, `${px}Consultations`, `${prefix.toLowerCase()}-consultations`, 0, tenantId]);
-    await db.execute("INSERT INTO categories (id, name, slug, sort_order, active, image_url, tenant_id) VALUES (?, ?, ?, ?, 1, '/uploads/cat_reeducation.png', ?)", 
+    await db.execute("INSERT INTO categories (id, name, slug, sort_order, active, image_url, tenant_id) VALUES (?, ?, ?, ?, 1, '/uploads/cat_reeducation.png', ?)",
       [cat2Id, `${px}Rééducation`, `${prefix.toLowerCase()}-reeducation`, 1, tenantId]);
-    await db.execute("INSERT INTO categories (id, name, slug, sort_order, active, image_url, tenant_id) VALUES (?, ?, ?, ?, 1, '/uploads/cat_massage.png', ?)", 
+    await db.execute("INSERT INTO categories (id, name, slug, sort_order, active, image_url, tenant_id) VALUES (?, ?, ?, ?, 1, '/uploads/cat_massage.png', ?)",
       [cat3Id, `${px}Massages Thérapeutiques`, `${prefix.toLowerCase()}-massages`, 2, tenantId]);
 
     // 2. Products
@@ -1411,34 +1410,34 @@ export const seedTenantDataAction = createServerFn({ method: "POST" })
     const prod3Id = crypto.randomUUID();
     const prod4Id = crypto.randomUUID();
     const prod5Id = crypto.randomUUID();
-    
-    await db.execute("INSERT INTO products (id, name, category, type, price, duration_min, bookable, image_url, tenant_id) VALUES (?, ?, ?, 'service', 400, 60, 1, '/uploads/prod_bilan.png', ?)", 
+
+    await db.execute("INSERT INTO products (id, name, category, type, price, duration_min, bookable, image_url, tenant_id) VALUES (?, ?, ?, 'service', 400, 60, 1, '/uploads/prod_bilan.png', ?)",
       [prod1Id, `${px}Bilan initial kinésithérapie`, `${prefix.toLowerCase()}-consultations`, tenantId]);
-    await db.execute("INSERT INTO products (id, name, category, type, price, duration_min, bookable, image_url, tenant_id) VALUES (?, ?, ?, 'service', 200, 30, 1, '/uploads/prod_rehab.png', ?)", 
+    await db.execute("INSERT INTO products (id, name, category, type, price, duration_min, bookable, image_url, tenant_id) VALUES (?, ?, ?, 'service', 200, 30, 1, '/uploads/prod_rehab.png', ?)",
       [prod2Id, `${px}Séance de rééducation`, `${prefix.toLowerCase()}-reeducation`, tenantId]);
-    await db.execute("INSERT INTO products (id, name, category, type, price, duration_min, bookable, image_url, tenant_id) VALUES (?, ?, ?, 'service', 150, 15, 1, '/uploads/prod_shockwave.png', ?)", 
+    await db.execute("INSERT INTO products (id, name, category, type, price, duration_min, bookable, image_url, tenant_id) VALUES (?, ?, ?, 'service', 150, 15, 1, '/uploads/prod_shockwave.png', ?)",
       [prod3Id, `${px}Ondes de choc`, `${prefix.toLowerCase()}-reeducation`, tenantId]);
-    await db.execute("INSERT INTO products (id, name, category, type, price, duration_min, bookable, image_url, tenant_id) VALUES (?, ?, ?, 'service', 350, 45, 1, '/uploads/prod_backmassage.png', ?)", 
+    await db.execute("INSERT INTO products (id, name, category, type, price, duration_min, bookable, image_url, tenant_id) VALUES (?, ?, ?, 'service', 350, 45, 1, '/uploads/prod_backmassage.png', ?)",
       [prod4Id, `${px}Massage thérapeutique dos`, `${prefix.toLowerCase()}-massages`, tenantId]);
-    await db.execute("INSERT INTO products (id, name, category, type, price, duration_min, bookable, image_url, tenant_id) VALUES (?, ?, ?, 'service', 400, 60, 1, '/uploads/prod_drainage.png', ?)", 
+    await db.execute("INSERT INTO products (id, name, category, type, price, duration_min, bookable, image_url, tenant_id) VALUES (?, ?, ?, 'service', 400, 60, 1, '/uploads/prod_drainage.png', ?)",
       [prod5Id, `${px}Drainage lymphatique`, `${prefix.toLowerCase()}-massages`, tenantId]);
 
     // 3. Clients
     const c1Id = crypto.randomUUID();
     const c2Id = crypto.randomUUID();
     const c3Id = crypto.randomUUID();
-    await db.execute("INSERT INTO clients (id, first_name, last_name, phone, email, tenant_id) VALUES (?, ?, ?, ?, ?, ?)", 
+    await db.execute("INSERT INTO clients (id, first_name, last_name, phone, email, tenant_id) VALUES (?, ?, ?, ?, ?, ?)",
       [c1Id, `${px}Client 1`, "", "0600000001", "c1@test.com", tenantId]);
-    await db.execute("INSERT INTO clients (id, first_name, last_name, phone, email, tenant_id) VALUES (?, ?, ?, ?, ?, ?)", 
+    await db.execute("INSERT INTO clients (id, first_name, last_name, phone, email, tenant_id) VALUES (?, ?, ?, ?, ?, ?)",
       [c2Id, `${px}Client 2 (C2)`, "", "0600000002", "c2@test.com", tenantId]);
-    await db.execute("INSERT INTO clients (id, first_name, last_name, phone, email, tenant_id) VALUES (?, ?, ?, ?, ?, ?)", 
+    await db.execute("INSERT INTO clients (id, first_name, last_name, phone, email, tenant_id) VALUES (?, ?, ?, ?, ?, ?)",
       [c3Id, `${px}Client 3 (C3)`, "", "0600000003", "c3@test.com", tenantId]);
 
     // 4. Appointments (in 1 day, 2 days, 3 days)
     const now = new Date();
     const d1 = new Date(now); d1.setDate(d1.getDate() + 1); d1.setHours(10, 0, 0, 0);
     const d2 = new Date(now); d2.setDate(d2.getDate() + 2); d2.setHours(14, 0, 0, 0);
-    
+
     await db.execute("INSERT INTO appointments (id, client_id, client_name, product_id, service_name, starts_at, duration_min, tenant_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
       [crypto.randomUUID(), c1Id, `${px}Client 1`, prod1Id, `${px}Bilan initial kinésithérapie`, d1.toLocaleString('sv-SE').replace(' ', 'T'), 60, tenantId]);
     await db.execute("INSERT INTO appointments (id, client_id, client_name, product_id, service_name, starts_at, duration_min, tenant_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -1448,7 +1447,7 @@ export const seedTenantDataAction = createServerFn({ method: "POST" })
     const s1Id = crypto.randomUUID();
     const adminUser = await db.queryOne("SELECT id FROM users WHERE tenant_id = ? AND role = 'admin' LIMIT 1", [tenantId]);
     const cashierId = adminUser ? adminUser.id : "system";
-    
+
     await db.execute("INSERT INTO sales (id, cashier_id, client_id, subtotal, discount, total, payment_method, tenant_id) VALUES (?, ?, ?, ?, 0, ?, 'cash', ?)",
       [s1Id, cashierId, c1Id, 400, 400, tenantId]);
     await db.execute("INSERT INTO sale_items (id, sale_id, product_id, product_name, unit_price, quantity, line_total, tenant_id) VALUES (?, ?, ?, ?, ?, 1, ?, ?)",
@@ -1464,7 +1463,7 @@ export const seedTenantDataAction = createServerFn({ method: "POST" })
 export const getProspectsAction = createServerFn({ method: "GET" })
   .handler(async ({ data }: { data: { userId: string } }) => {
     const user = await checkCrmAccess(data.userId);
-    
+
     if (user.role === "super_admin") {
       return await db.query("SELECT * FROM prospects ORDER BY created_at DESC");
     } else {
@@ -1486,7 +1485,7 @@ export const updateProspectStatusAction = createServerFn({ method: "POST" })
 export const updateProspectAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: { userId: string, prospectId: string, email: string, notes: string, status: string, callbackAt: string | null, rdvAt: string | null } }) => {
     const user = await checkCrmAccess(data.userId);
-    
+
     await db.execute(
       "UPDATE prospects SET email = ?, notes = ?, status = ?, callback_at = ? WHERE id = ?",
       [data.email, data.notes, data.status, data.callbackAt || null, data.prospectId]
@@ -1500,7 +1499,7 @@ export const updateProspectAction = createServerFn({ method: "POST" })
         const serviceName = "Démonstration CRM";
         const notes = `RDV prospect programmé par l'agent. Notes : ${data.notes || ''}`;
         const durationMin = 60;
-        
+
         // Sync to Google Calendar
         const googleConfig = await getGoogleConfig(user.tenant_id);
         const googleEventId = await syncEventToGoogle({
@@ -1516,15 +1515,15 @@ export const updateProspectAction = createServerFn({ method: "POST" })
           INSERT INTO appointments (id, client_id, client_name, product_id, service_name, starts_at, duration_min, notes, created_by, google_event_id, created_at, tenant_id)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `, [
-          appointmentId, 
-          null, 
-          prospect.name, 
-          null, 
-          serviceName, 
-          startsAt, 
-          durationMin, 
-          notes, 
-          data.userId, 
+          appointmentId,
+          null,
+          prospect.name,
+          null,
+          serviceName,
+          startsAt,
+          durationMin,
+          notes,
+          data.userId,
           googleEventId,
           new Date().toISOString().replace('.000Z', '').replace('Z', ''),
           user.tenant_id
@@ -1580,7 +1579,7 @@ export const importProspectsAction = createServerFn({ method: "POST" })
         // Check duplicates based on criteria
         const isPhoneDup = phoneKey && existingPhones.has(phoneKey);
         const isEmailDup = email && existingEmails.has(email);
-        
+
         let isDuplicate = false;
         if (duplicateCriteria === 'phone') {
           isDuplicate = !!isPhoneDup;
@@ -1733,7 +1732,7 @@ export const recycleProspectsAction = createServerFn({ method: "POST" })
 
         // Calculate eligibility
         const assignedTime = p.assigned_at ? new Date(p.assigned_at).getTime() : 0;
-        
+
         let limitTime = new Date(inactivityLimit).getTime();
         if (p.status === 'sans_reponse' || p.status === 'contacte' || p.status === 'pas_interesse' || p.status === 'refus') {
           limitTime = new Date(refusalLimit).getTime();
@@ -1758,7 +1757,7 @@ export const recycleProspectsAction = createServerFn({ method: "POST" })
 export const exportDatabaseAction = createServerFn({ method: "GET" })
   .handler(async ({ data }: { data: { userId: string } }) => {
     await checkSuperAdmin(data.userId);
-    
+
     if (process.env.MYSQL_HOST) {
       throw new Error("L'export de base de données n'est pas supporté en mode MySQL.");
     }
@@ -1855,10 +1854,10 @@ export const uploadPaymentProofAction = createServerFn({ method: "POST" })
     // Also write to data folder (persisted Docker volume in prod)
     const dataDir = join(process.cwd(), "data", "payment_proofs");
     if (!existsSync(dataDir)) {
-      try { mkdirSync(dataDir, { recursive: true }); } catch(e) {}
+      try { mkdirSync(dataDir, { recursive: true }); } catch (e) { }
     }
     const dataPath = join(dataDir, cleanFilename);
-    try { writeFileSync(dataPath, buffer); } catch(e) {}
+    try { writeFileSync(dataPath, buffer); } catch (e) { }
 
     const webPath = `/payment_proofs/${cleanFilename}`;
     await db.execute("UPDATE tenants SET payment_proof_url = ? WHERE id = ?", [webPath, data.tenantId]);
@@ -1898,9 +1897,9 @@ export const getTenantPublicProfileAction = createServerFn({ method: "POST" })
     }
 
     let services = [];
-    try { if (t.vitrine_services) services = JSON.parse(t.vitrine_services); } catch(e) {}
+    try { if (t.vitrine_services) services = JSON.parse(t.vitrine_services); } catch (e) { }
     let gallery = [];
-    try { if (t.gallery_images) gallery = JSON.parse(t.gallery_images); } catch(e) {}
+    try { if (t.gallery_images) gallery = JSON.parse(t.gallery_images); } catch (e) { }
 
     return {
       id: t.id,
@@ -1927,9 +1926,9 @@ export const uploadGalleryImageAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: { userId: string; base64: string; filename: string } }) => {
     const user = await checkAdmin(data.userId);
     const tenant = await db.queryOne("SELECT gallery_images FROM tenants WHERE id = ?", [user.tenant_id]);
-    
+
     let gallery = [];
-    try { if (tenant.gallery_images) gallery = JSON.parse(tenant.gallery_images); } catch(e) {}
+    try { if (tenant.gallery_images) gallery = JSON.parse(tenant.gallery_images); } catch (e) { }
 
     // Limit to 6 images
     if (gallery.length >= 6) {
@@ -1951,9 +1950,9 @@ export const uploadGalleryImageAction = createServerFn({ method: "POST" })
 
     const dataDir = join(process.cwd(), "data", "uploads", "gallery");
     if (!existsSync(dataDir)) {
-      try { mkdirSync(dataDir, { recursive: true }); } catch(e) {}
+      try { mkdirSync(dataDir, { recursive: true }); } catch (e) { }
     }
-    try { writeFileSync(join(dataDir, cleanFilename), buffer); } catch(e) {}
+    try { writeFileSync(join(dataDir, cleanFilename), buffer); } catch (e) { }
 
     const webPath = `/uploads/gallery/${cleanFilename}`;
     gallery.push(webPath);
@@ -1967,9 +1966,9 @@ export const deleteGalleryImageAction = createServerFn({ method: "POST" })
   .handler(async ({ data }: { data: { userId: string; url: string } }) => {
     const user = await checkAdmin(data.userId);
     const tenant = await db.queryOne("SELECT gallery_images FROM tenants WHERE id = ?", [user.tenant_id]);
-    
+
     let gallery = [];
-    try { if (tenant.gallery_images) gallery = JSON.parse(tenant.gallery_images); } catch(e) {}
+    try { if (tenant.gallery_images) gallery = JSON.parse(tenant.gallery_images); } catch (e) { }
 
     gallery = gallery.filter((img: string) => img !== data.url);
 
@@ -1993,18 +1992,20 @@ export const createPublicAppointmentRequestAction = createServerFn({ method: "PO
   });
 
 export const updateTenantPublicProfileAction = createServerFn({ method: "POST" })
-  .handler(async ({ data }: { data: { 
-    userId: string; 
-    specialty: string; 
-    city: string; 
-    description: string;
-    facebook_url?: string;
-    instagram_url?: string;
-    whatsapp_number?: string;
-    google_maps_url?: string;
-    vitrine_services?: string;
-    gallery_images?: string;
-  } }) => {
+  .handler(async ({ data }: {
+    data: {
+      userId: string;
+      specialty: string;
+      city: string;
+      description: string;
+      facebook_url?: string;
+      instagram_url?: string;
+      whatsapp_number?: string;
+      google_maps_url?: string;
+      vitrine_services?: string;
+      gallery_images?: string;
+    }
+  }) => {
     const user = await checkAdmin(data.userId);
     await db.execute(
       `UPDATE tenants SET 
@@ -2013,7 +2014,7 @@ export const updateTenantPublicProfileAction = createServerFn({ method: "POST" }
         vitrine_services = ?, gallery_images = ?
        WHERE id = ?`,
       [
-        data.specialty, data.city, data.description, 
+        data.specialty, data.city, data.description,
         data.facebook_url || null, data.instagram_url || null, data.whatsapp_number || null, data.google_maps_url || null,
         data.vitrine_services || null, data.gallery_images || null,
         user.tenant_id
@@ -2023,19 +2024,21 @@ export const updateTenantPublicProfileAction = createServerFn({ method: "POST" }
   });
 
 export const updateTenantPublicProfileSuperAdminAction = createServerFn({ method: "POST" })
-  .handler(async ({ data }: { data: { 
-    userId: string; 
-    tenantId: string; 
-    specialty: string; 
-    city: string; 
-    description: string;
-    facebook_url?: string;
-    instagram_url?: string;
-    whatsapp_number?: string;
-    google_maps_url?: string;
-    vitrine_services?: string;
-    gallery_images?: string;
-  } }) => {
+  .handler(async ({ data }: {
+    data: {
+      userId: string;
+      tenantId: string;
+      specialty: string;
+      city: string;
+      description: string;
+      facebook_url?: string;
+      instagram_url?: string;
+      whatsapp_number?: string;
+      google_maps_url?: string;
+      vitrine_services?: string;
+      gallery_images?: string;
+    }
+  }) => {
     await checkSuperAdmin(data.userId);
     await db.execute(
       `UPDATE tenants SET 
@@ -2044,7 +2047,7 @@ export const updateTenantPublicProfileSuperAdminAction = createServerFn({ method
         vitrine_services = ?, gallery_images = ?
        WHERE id = ?`,
       [
-        data.specialty, data.city, data.description, 
+        data.specialty, data.city, data.description,
         data.facebook_url || null, data.instagram_url || null, data.whatsapp_number || null, data.google_maps_url || null,
         data.vitrine_services || null, data.gallery_images || null,
         data.tenantId

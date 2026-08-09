@@ -887,6 +887,20 @@ function CRMPage() {
                       </p>
                     )}
 
+                    <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 flex items-center justify-between">
+                      <div className="text-xs text-blue-800">
+                        <span className="font-semibold">📄 Modèle Excel :</span> Téléchargez le fichier modèle pour préparer vos données.
+                      </div>
+                      <a 
+                        href="/donnees_test_superadmin.xlsx" 
+                        download="donnees_test_superadmin.xlsx"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors shrink-0 ml-3"
+                      >
+                        <FileSpreadsheet className="w-3.5 h-3.5" />
+                        Télécharger le modèle
+                      </a>
+                    </div>
+
                     <div className="border-2 border-dashed border-slate-200 hover:border-primary/50 transition-colors rounded-xl p-8 text-center bg-slate-50/50 relative cursor-pointer group">
                       <input 
                         type="file" 
